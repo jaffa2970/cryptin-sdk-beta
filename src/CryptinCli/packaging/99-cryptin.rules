@@ -1,0 +1,51 @@
+# Crypt-in dongle — udev rules for non-root access on Linux.
+#
+# Install:
+#   sudo cp 99-cryptin.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules
+#   sudo udevadm trigger --action=add --subsystem-match=hidraw
+#   then unplug and replug the dongle
+#
+# ⚠️ A bare `udevadm trigger` does NOT apply this to a node that already exists —
+# measured 2026-08-05, and it was the instruction printed here until then. Either
+# pass --action=add as above, or replug, which is confirmed to work.
+#
+# Without this file the CLI runs only as root. Linux exposes HID devices through
+# /dev/hidraw*, which is root-only by default, and a tool that needs sudo to read
+# a USB key is a tool people work around.
+#
+# ⚠️ The IDs below are Espressif's vendor ID with a placeholder product ID
+# (HidConstants.cs says so at the definition). They are correct for every dongle
+# built today, and they will change if a VID/PID is ever registered — this file
+# has to move with them, and it is not covered by check-protocol-mirrors.py.
+
+# --- the dongle, application running -------------------------------------
+# Matches on hidraw and not on usb: HidSharp enumerates hidraw nodes, so a rule
+# on the parent USB device alone leaves the node itself unreadable.
+#
+# ⚠️ GROUP="plugdev" is the part that actually works here — do not remove it.
+# This comment used to call uaccess the modern half and plugdev its fallback.
+# Measured on Ubuntu 26.04 on 2026-08-05, on a clean replug, it is the other way
+# round: TAG+="uaccess" produced **no ACL at all** — getfacl showed only base
+# entries — and access came entirely from the group. A rule written with uaccess
+# alone, which is the form most often recommended online, leaves the device
+# unreadable on that machine.
+#
+# TAG+="uaccess" stays because where systemd-logind does grant it, it is the
+# cleaner answer: access follows whoever is physically at the seat, with no
+# group to join. It is kept as the belt, not as the braces.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="8123", \
+    TAG+="uaccess", MODE="0660", GROUP="plugdev"
+
+# --- the CH343 UART bridge -----------------------------------------------
+# Only `cryptin reset` needs this, to hold EN low through RTS. Not present on a
+# shipped dongle, which wires one socket — this matters on a development board
+# with both cables, and it is the only way to recover a chip whose application
+# is not running.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d3", \
+    TAG+="uaccess", MODE="0660", GROUP="dialout"
+
+# --- deliberately NOT here ------------------------------------------------
+# The chip's own USB-Serial/JTAG port (303a:1001) gets no rule. Driving RTS
+# there does not reach EN, so a reset aimed at it silently does nothing, and
+# making it convenient to open would only make that mistake easier to reach.

@@ -1,0 +1,61 @@
+Crypt-in SDK (CryptinSDK)
+Copyright 2026 lake8.dev
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file in this
+directory for the full text.
+
+--------------------------------------------------------------------------------
+
+SCOPE OF THIS LICENCE
+
+Apache-2.0 covers THIS DIRECTORY -- src/CryptinSDK/, the client library --
+and src/CryptinCli/, the command-line client built on it, which carries its
+own copy of the licence and its own NOTICE.
+
+The rest of the repository is GPL-3.0 and stays that way:
+
+  src/CryptinPersonal/   the Windows application
+  src/CryptinUpdater/    the firmware flashing tool
+  tests/                 the compatibility gate and the hardware harness
+
+The dongle firmware is not part of this repository.
+
+That split is deliberate. The library and the CLI are the parts third parties
+are meant to build on, so they carry the permissive licence; the application
+is not. The direction also matters legally: a GPL-3.0 application may link an
+Apache-2.0 library, which is what CryptinPersonal does. The reverse would not
+work.
+
+--------------------------------------------------------------------------------
+
+THIRD-PARTY COMPONENTS
+
+HidSharp (https://www.nuget.org/packages/HidSharp/)
+    Copyright 2010-2025 James F. Bellinger
+    Apache License 2.0
+    Referenced as a NuGet package; not redistributed in this source tree.
+
+System.IO.Ports (https://www.nuget.org/packages/System.IO.Ports/)
+    Copyright (c) .NET Foundation and Contributors
+    MIT License
+    Referenced as a NuGet package; not redistributed in this source tree.
+
+Resources/bip39_english.txt
+    The standard BIP-39 English wordlist, from
+    https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt
+    (SHA-256 2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda).
+    Byte-identical to the copy compiled into the Crypt-in firmware; the
+    project's pre-commit check compares the two by SHA-256 on every commit,
+    because a divergence would mean a phrase the dongle accepts and the host
+    rejects, discovered in the middle of a recovery.
+
+--------------------------------------------------------------------------------
+
+WHY THIS LIBRARY COULD BE RELICENSED AT ALL
+
+CryptinCipher was written from the normative specification in
+CRYPTIN_FILE_FORMAT.md, not ported from the legacy GPL-3.0 implementation in
+KriptC# (architecture decision of 2026-08-01, option C). Had it been a port it
+would have been a derivative work, and this file would have been a harder
+document to write. The compatibility gate existing before the code is what
+made writing from the specification practical.

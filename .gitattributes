@@ -1,0 +1,12 @@
+# The compatibility gate compares bytes, so its inputs must not be rewritten by
+# the checkout. Without these rules git turns the CRLF of text.txt into LF on
+# Linux, the plaintext shrinks from 230 to 227 bytes, and the gate fails on a
+# file nobody touched (measured 2026-08-06 on Ubuntu).
+tests/fixtures/**        -text
+*.crin                   binary
+*.cryptin                binary
+
+# Byte-identical to the firmware's copy; checked by SHA-256.
+bip39_english.txt        -text
+
+*.sh                     text eol=lf

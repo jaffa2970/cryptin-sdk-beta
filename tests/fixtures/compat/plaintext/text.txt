@@ -1,0 +1,3 @@
+Crypt-in compatibility fixture.
+Se questo testo riappare intatto dopo la decifratura, il lettore ha interpretato correttamente header, AAD e derivazione della chiave.
+Accenti e UTF-8 multibyte: àèìòù — € — 日本語

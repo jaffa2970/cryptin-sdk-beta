@@ -1,0 +1,248 @@
+{
+  "generated": "2026-08-01",
+  "purpose": "compatibility gate -- a new implementation must open every file listed here before the legacy code may be deprecated",
+  "synthetic_vectors": {
+    "note": "not secrets; fixed so the fixtures are byte-reproducible",
+    "file_secret": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "pubkey_a": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+    "pubkey_b_wrong_dongle": "606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f",
+    "hkdf_salt": "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+    "gcm_nonce": "b0b1b2b3b4b5b6b7b8b9babb",
+    "hkdf_info": "cryptin-file-v1",
+    "hkdf_info_dongle": "cryptin-file-key-v1",
+    "hkdf_info_v2": "cryptin-file-key-v2"
+  },
+  "plaintexts": [
+    {
+      "file": "binary.bin",
+      "sha256": "44381c31f13adc2f3dd2ab9901ba7a656ed3a45ef25d5aae0ff5c920d4fe79e3"
+    },
+    {
+      "file": "empty.bin",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "folder.zip",
+      "sha256": "c701bb120db04d0f82edb703f73aea227aa55118110817c094eb87c267a5d117"
+    },
+    {
+      "file": "text.txt",
+      "sha256": "4824d4ac21ae5721ffbff6df86d17683a0d821cd4a8fae8e3be827d84b55249d"
+    }
+  ],
+  "cases": [
+    {
+      "file": "cryptin/binary.cryptin",
+      "format": "cryptin",
+      "header_bytes": 69,
+      "expect": "plaintext",
+      "plaintext": "plaintext/binary.bin",
+      "sha256": "83c3b7fb7ceb8b1c4a1efcdcb066b12295c4923fcb00545ddf4e4c63070ff218",
+      "derivation": "legacy"
+    },
+    {
+      "file": "cryptin/empty.cryptin",
+      "format": "cryptin",
+      "header_bytes": 69,
+      "expect": "plaintext",
+      "plaintext": "plaintext/empty.bin",
+      "sha256": "bc37a356462423883501a0f87fac3ecc930e4376def4ec25cd1dc5f2c08382f0",
+      "derivation": "legacy"
+    },
+    {
+      "file": "cryptin/text.cryptin",
+      "format": "cryptin",
+      "header_bytes": 69,
+      "expect": "plaintext",
+      "plaintext": "plaintext/text.txt",
+      "sha256": "4be5be146df35eb9a19fb120267d9fced847bc703f7105d6d32649c4dcf7b013",
+      "derivation": "legacy"
+    },
+    {
+      "file": "cryptin/wrong-dongle.cryptin",
+      "format": "cryptin",
+      "header_bytes": 69,
+      "expect": "wrong-dongle",
+      "plaintext": "plaintext/text.txt",
+      "sha256": "329653f7c241a0582b94726e4b714cd16c74f7333e61ad8bd14f1538611889c7",
+      "derivation": "legacy"
+    },
+    {
+      "file": "crin/binary.crin",
+      "format": "crin",
+      "header_bytes": 66,
+      "expect": "plaintext",
+      "plaintext": "plaintext/binary.bin",
+      "sha256": "cfb73f5d0eff346f425752e537ecd0a8823b1e022505ac3463bf665a840c3f51",
+      "derivation": "legacy"
+    },
+    {
+      "file": "crin/empty.crin",
+      "format": "crin",
+      "header_bytes": 66,
+      "expect": "plaintext",
+      "plaintext": "plaintext/empty.bin",
+      "sha256": "6466b91b46f23e8f3b578242fdb24a6074567ddefb2d1ef6844a2d154aaf8f8b",
+      "derivation": "legacy"
+    },
+    {
+      "file": "crin/folder.crin",
+      "format": "crin",
+      "header_bytes": 66,
+      "expect": "folder",
+      "plaintext": "plaintext/folder.zip",
+      "sha256": "179d4fca3f41060a8525549321b1e0eefff251455dc61599ed913d69e9e98934",
+      "derivation": "legacy"
+    },
+    {
+      "file": "crin/text.crin",
+      "format": "crin",
+      "header_bytes": 66,
+      "expect": "plaintext",
+      "plaintext": "plaintext/text.txt",
+      "sha256": "605d8b1e8eddffded60aabbfe6b34073e2f5ba64aa86fc16ce64044a09493c6e",
+      "derivation": "legacy"
+    },
+    {
+      "file": "crin/wrong-dongle.crin",
+      "format": "crin",
+      "header_bytes": 66,
+      "expect": "wrong-dongle",
+      "plaintext": "plaintext/text.txt",
+      "sha256": "fac11aef463e7eac7fcb2fa339ef3aac9f337930838665dafa403e9dd1017c31",
+      "derivation": "legacy"
+    },
+    {
+      "file": "crin-dongle/binary.crin",
+      "format": "crin",
+      "derivation": "dongle",
+      "header_bytes": 66,
+      "expect": "plaintext",
+      "plaintext": "plaintext/binary.bin",
+      "sha256": "c5d1c61940136ac98a9201643a91b38a66a6d23ca0fe57e0cf6d99e26bec8926"
+    },
+    {
+      "file": "crin-dongle/empty.crin",
+      "format": "crin",
+      "derivation": "dongle",
+      "header_bytes": 66,
+      "expect": "plaintext",
+      "plaintext": "plaintext/empty.bin",
+      "sha256": "732e2e4b87d7a1d5969746db32d8b44e5db43792f58ff5cf4ec6ada09bafa544"
+    },
+    {
+      "file": "crin-dongle/folder.crin",
+      "format": "crin",
+      "derivation": "dongle",
+      "header_bytes": 66,
+      "expect": "folder",
+      "plaintext": "plaintext/folder.zip",
+      "sha256": "136c0eff76447fc3c443ad18bc81bc7e62e7f8433618ed47b9db407c7ed290e0"
+    },
+    {
+      "file": "crin-dongle/text.crin",
+      "format": "crin",
+      "derivation": "dongle",
+      "header_bytes": 66,
+      "expect": "plaintext",
+      "plaintext": "plaintext/text.txt",
+      "sha256": "d403f78d1905857035ae0ccdc42f031cbe855c2e1267473af2e2cb189e525a14"
+    },
+    {
+      "file": "crin-dongle/wrong-dongle.crin",
+      "format": "crin",
+      "derivation": "dongle",
+      "header_bytes": 66,
+      "expect": "wrong-dongle",
+      "plaintext": "plaintext/text.txt",
+      "sha256": "3317caa5fc44d5c0440be8d740b125a3da3afe63a60a0a69b16a7a2bc4c2f01d"
+    },
+    {
+      "file": "crin-v2/binary.crin",
+      "format": "crin",
+      "derivation": "v2",
+      "header_bytes": 66,
+      "expect": "plaintext",
+      "plaintext": "plaintext/binary.bin",
+      "sha256": "b0532a0c8875c9cb3be270595ae4a1acab831d4c14dacfeca1ecc7b9f901a87c"
+    },
+    {
+      "file": "crin-v2/empty.crin",
+      "format": "crin",
+      "derivation": "v2",
+      "header_bytes": 66,
+      "expect": "plaintext",
+      "plaintext": "plaintext/empty.bin",
+      "sha256": "450a4bbf7ecdd05647e5638ae208f3363122feeefb44157e22ef8c0116d72281"
+    },
+    {
+      "file": "crin-v2/folder.crin",
+      "format": "crin",
+      "derivation": "v2",
+      "header_bytes": 66,
+      "expect": "folder",
+      "plaintext": "plaintext/folder.zip",
+      "sha256": "f73081d3844a64d7ab03f713819664eb5e6668e20ac1c6e2b3a8498c43d0d6f4"
+    },
+    {
+      "file": "crin-v2/text.crin",
+      "format": "crin",
+      "derivation": "v2",
+      "header_bytes": 66,
+      "expect": "plaintext",
+      "plaintext": "plaintext/text.txt",
+      "sha256": "24b26f80c7852e52c001fdc88c471d01c7e35dc8debb22f181a98010c184519a"
+    },
+    {
+      "file": "crin-v2/wrong-dongle.crin",
+      "format": "crin",
+      "derivation": "v2",
+      "header_bytes": 66,
+      "expect": "wrong-dongle",
+      "plaintext": "plaintext/text.txt",
+      "sha256": "1a2efc0c82eb7f0f45247588e1619d24eab5801b74acdd8db7e1d522f696ac15"
+    },
+    {
+      "file": "crin-chip/binary.crin",
+      "format": "crin",
+      "derivation": "chip",
+      "header_bytes": 66,
+      "expect": "plaintext",
+      "plaintext": "plaintext/binary.bin",
+      "sha256": "f08a06c67c1a884195406b5b6f93f3213c3623a89a66d49cf9e9243819320dea"
+    },
+    {
+      "file": "crin-chip/folder.crin",
+      "format": "crin",
+      "derivation": "chip",
+      "header_bytes": 66,
+      "expect": "folder",
+      "plaintext": "plaintext/folder.zip",
+      "sha256": "6cfa77b182903211d95ae7d7c86a1bffa76fc93b6474200cbd431d5f5f22b653"
+    },
+    {
+      "file": "crin-chip/text.crin",
+      "format": "crin",
+      "derivation": "chip",
+      "header_bytes": 66,
+      "expect": "plaintext",
+      "plaintext": "plaintext/text.txt",
+      "sha256": "489ca50813acd2b8b6dff9f0b97ac92095ee36e7d57c3fc3fbc3bc020ac6220a"
+    },
+    {
+      "file": "crin-chip/wrong-dongle.crin",
+      "format": "crin",
+      "derivation": "chip",
+      "header_bytes": 66,
+      "expect": "wrong-dongle",
+      "plaintext": "plaintext/text.txt",
+      "sha256": "2b07279c055a2e284f39a7c7e04c6c0620b08b342fb8725f36a663e997b34ccf"
+    }
+  ],
+  "derivations": {
+    "legacy": "HKDF info 'cryptin-file-v1', AAD = the whole header. Host-side, before 2026-08-02.",
+    "dongle": "HKDF info 'cryptin-file-key-v1', AAD empty. What the chip writes since 2026-08-02; measured 2026-09-30.",
+    "v2": "Format version 2: HKDF info 'cryptin-file-key-v2', standard AES-GCM, AAD = the whole 66-byte header. What the product writes since 2026-10-09.",
+    "chip": "Version 1 as the chip wrote it (\u00a72.1): HKDF info 'cryptin-file-key-v1', AAD empty, per-chunk GCM with cuts 27 then 55. Every chip-written v1 file over 27 bytes; standard AES-GCM does not open it."
+  }
+}

@@ -1,0 +1,97 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\CryptinSDK\CryptinSDK.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.IO.Ports" Version="10.0.10" />
+  </ItemGroup>
+
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!-- The configurations this project offers. RedTeam is a third one beside
+       Debug and Release, not a variant of either: it exists so the app that
+       talks to the clone licence server is a different binary from the one that
+       ships, rather than the same binary with a switch a customer could flip. -->
+  <PropertyGroup>
+    <Configurations>Debug;Release;RedTeam</Configurations>
+  </PropertyGroup>
+
+  <!-- The red-team build, and the whole of what makes it one.
+       CRYPTIN_REDTEAM is read in exactly one place, LicenseEndpoint.cs, which
+       swaps the licence server for the clone and stamps the window titles so
+       the two cannot be confused on screen.
+
+       Optimize has to be set by hand: the SDK only turns it on for the
+       configuration literally named Release, so without this line the red team
+       would be testing an unoptimised build. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'RedTeam'">
+    <DefineConstants>$(DefineConstants);CRYPTIN_REDTEAM</DefineConstants>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <!-- The updater has to sit next to the app, because that is where
+       UpdaterProcess looks for it: AppContext.BaseDirectory, no search path, no
+       setting. Without this the flash step of SetupWizard is disabled on every
+       machine including the bench, and the reason it gives, "CryptinUpdater.exe
+       is not installed", is true and useless.
+
+       ReferenceOutputAssembly is false because nothing here links against it:
+       the reference exists to fix the build order and nothing else. The process
+       boundary described in UpdaterProcess stays exactly as it was. -->
+  <ItemGroup>
+    <ProjectReference Include="..\CryptinUpdater\CryptinUpdater.csproj"
+                      ReferenceOutputAssembly="false"
+                      Private="false" />
+  </ItemGroup>
+
+  <!-- The whole set, not just the .exe: a framework-dependent .NET executable
+       does not start without its .dll, .deps.json and .runtimeconfig.json. -->
+  <Target Name="CopyUpdaterBesideApp" AfterTargets="Build">
+    <ItemGroup>
+      <UpdaterPayload Include="..\CryptinUpdater\bin\$(Configuration)\net9.0\CryptinUpdater.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(UpdaterPayload)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- And the image it writes. Measured 2026-09-01: without this the Program
+       button fails on every from-source build with "nessuna immagine", telling
+       the user to pass an image argument or set CRYPTIN_TEST_FIRMWARE. The
+       updater resolves that argument, then that variable, then the path
+       firmware/firmware.factory.bin
+       beside the executable, which is where the package puts it and where a
+       build from source put nothing. It went unnoticed on 2026-08-31 because
+       the variable happened to be set in that shell: the same class of defect
+       as "a dependency that only exists on the developer's machine", and it
+       hides the same way. Optional on purpose: a tree with no PlatformIO build
+       still compiles, it just cannot flash. -->
+  <Target Name="CopyFirmwareImageBesideApp" AfterTargets="Build">
+    <ItemGroup>
+      <FirmwareImage Include="..\..\..\firmware\.pio\build\esp32-s3-n16r8-dev\firmware.factory.bin" />
+    </ItemGroup>
+    <Copy SourceFiles="@(FirmwareImage)"
+          DestinationFolder="$(OutDir)firmware"
+          SkipUnchangedFiles="true"
+          Condition="Exists('%(FirmwareImage.FullPath)')" />
+  </Target>
+
+  <!-- The drawing for step 1 of SerialRecoveryWizard. LoadCableImage looks for
+       uart_cable.png beside the executable, so it ships there, as a loose file
+       rather than a resource: swapping the picture stays a file copy. Generated
+       2026-10-14 (Gemini, PROMPT-GEMINI-uart-cable.md), cropped to the box. -->
+  <ItemGroup>
+    <None Include="Assets\uart_cable.png"
+          Link="uart_cable.png"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

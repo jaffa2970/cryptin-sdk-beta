@@ -1,0 +1,61 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- RedTeam is listed because CryptinPersonal offers it and the configuration
+         flows down a ProjectReference. It changes nothing here on purpose: the
+         SDK is Apache-2.0 and consumed by third parties, so LicenseClient's
+         default base URL stays production in every configuration. Only the app
+         diverges. -->
+    <Configurations>Debug;Release;RedTeam</Configurations>
+  </PropertyGroup>
+
+  <!-- Apache-2.0, and only this project. The rest of the repository is GPL-3.0
+       (see NOTICE). Declared here as well as in LICENSE because this is what a
+       consumer sees in the package metadata, and it is the promise made on
+       cryptin.lake8.dev. -->
+  <PropertyGroup>
+    <PackageId>CryptinSDK</PackageId>
+    <Authors>lake8.dev</Authors>
+    <Copyright>Copyright 2026 lake8.dev</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://cryptin.lake8.dev</PackageProjectUrl>
+    <Description>Client library for the Crypt-in hardware dongle: HID protocol, .crin container format, and the licence client.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="LICENSE" Pack="true" PackagePath="" />
+    <None Include="NOTICE" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Same HID transport the legacy app used, so the wire behaviour that was
+         already verified against hardware is not being re-litigated here. -->
+    <PackageReference Include="HidSharp" Version="2.6.4" />
+
+    <!-- Only DongleHardReset needs this, and only to toggle RTS. It ships as a
+         separate package rather than in the shared framework, and it is worth
+         the weight because the state it recovers from (an application that is
+         not running) is by definition unreachable over HID. -->
+    <PackageReference Include="System.IO.Ports" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The compatibility gate needs the deterministic writer overload, which is
+         internal because passing in a salt and nonce is only ever safe when
+         reproducing bytes that already exist. -->
+    <InternalsVisibleTo Include="CryptinSDK.Compat" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- A copy of Krypt/firmware/bip39_english.txt, the wordlist the firmware
+         compiles in. It is duplicated rather than linked because this project
+         becomes its own repository; check-protocol-mirrors.py compares the two
+         by SHA-256 on every commit, so the duplicate cannot drift unnoticed. -->
+    <EmbeddedResource Include="Resources\bip39_english.txt" LogicalName="bip39_english.txt" />
+  </ItemGroup>
+
+</Project>

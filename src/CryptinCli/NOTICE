@@ -1,0 +1,31 @@
+Crypt-in command-line client (cryptin)
+Copyright 2026 lake8.dev
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file in this
+directory for the full text.
+
+--------------------------------------------------------------------------------
+
+SCOPE OF THIS LICENCE
+
+Apache-2.0 covers THIS DIRECTORY -- src/CryptinCli/, the command-line client.
+It links src/CryptinSDK/, which is Apache-2.0 as well (see its own LICENSE and
+NOTICE). Everything else in the repository is GPL-3.0; see the LICENSE at the
+root.
+
+--------------------------------------------------------------------------------
+
+THIRD-PARTY COMPONENTS
+
+None directly. Through CryptinSDK, a published binary of this tool includes:
+
+HidSharp (https://www.nuget.org/packages/HidSharp/)
+    Copyright 2010-2025 James F. Bellinger
+    Apache License 2.0
+
+System.IO.Ports (https://www.nuget.org/packages/System.IO.Ports/)
+    Copyright (c) .NET Foundation and Contributors
+    MIT License
+
+A self-contained publish also includes the .NET runtime (MIT License,
+Copyright (c) .NET Foundation and Contributors).

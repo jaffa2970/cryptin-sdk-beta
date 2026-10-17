@@ -1,0 +1,68 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>cryptin</AssemblyName>
+    <RootNamespace>CryptinCli</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!-- Apache-2.0, like the library it wraps and unlike the WinForms app. This
+       is the licence cryptin.lake8.dev promises for the Linux CLI, and it is
+       only possible because src/CryptinSDK/ moved off GPL-3.0 first. -->
+  <PropertyGroup>
+    <Authors>lake8.dev</Authors>
+    <Copyright>Copyright 2026 lake8.dev</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://cryptin.lake8.dev</PackageProjectUrl>
+    <Description>Command-line client for the Crypt-in hardware dongle.</Description>
+  </PropertyGroup>
+
+  <!-- Linux is the target that has a date on it, but nothing here is
+       Linux-only: CryptinSDK is net9.0 rather than net9.0-windows and HidSharp
+       carries a hidraw/libudev backend. Windows and macOS fall out for free. -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>linux-x64;linux-arm64;win-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <!--
+    Single-file and self-contained are publish concerns, deliberately NOT set as
+    plain properties: doing that pushes even `dotnet build` into a RID-specific
+    output directory, so `dotnet run` and every path in the docs stop matching
+    what is on disk. Ask for them on the publish command line instead:
+
+      dotnet publish src/CryptinCli -c Release -r linux-x64
+             -p:PublishSingleFile=true -p:SelfContained=true
+
+    which is what a beta tester should get: one file, no runtime to install.
+  -->
+
+  <!--
+    This one IS a property, unlike the two above, and the distinction is the
+    reason given there: those change where `dotnet build` puts its output, so
+    setting them here would break every path in the docs. This one is inert
+    unless PublishSingleFile is on, so it costs nothing to state and it cannot
+    be forgotten on a command line.
+
+    Without it, "one file" is false on Linux. Measured 2026-08-06: a
+    self-contained single-file publish for linux-x64 leaves
+    libSystem.IO.Ports.Native.so sitting next to the binary, and that is what
+    System.IO.Ports needs — so a tester who copies just `cryptin`, exactly as
+    told, gets working status/encrypt/decrypt and broken `reset` and `recover`.
+    That is the worst subset to lose: `recover` is the command for when the
+    dongle looks like it is not there.
+  -->
+  <PropertyGroup>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+
+
+  <ItemGroup>
+    <ProjectReference Include="..\CryptinSDK\CryptinSDK.csproj" />
+  </ItemGroup>
+
+</Project>

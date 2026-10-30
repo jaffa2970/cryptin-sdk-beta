@@ -1008,14 +1008,24 @@ internal sealed class MainForm : Form
         RunNewIdentityWizard(resume: true);
     }
 
-    /// <summary>Shared by the button and the resume offer. The wizard reflashes
-    /// and reconnects the dongle, so no session survives it.</summary>
+    /// <summary>Shared by the button and the resume offer. After a reflash no
+    /// session survives; after the in-place route the same handle is unlocked
+    /// with the new PIN, and asking for it a third time would be noise.</summary>
     private void RunNewIdentityWizard(bool resume)
     {
+        bool kept;
         using (Foreground())
         {
             using var wizard = new NewIdentityWizard(_dongle, _settings, resume);
             wizard.ShowDialog(this);
+            kept = wizard.SessionKept;
+        }
+
+        if (kept)
+        {
+            SetState(DongleState.Unlocked);
+            _licenceRefresh = RefreshLicenceAsync();
+            return;
         }
 
         _connectedSerial = "";

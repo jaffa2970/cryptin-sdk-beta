@@ -60,3 +60,33 @@ public enum PinResult
     /// <summary>STATUS_NOT_READY — key material not loaded yet.</summary>
     NotReady,
 }
+
+/// <summary>Outcome of <see cref="CryptinDongle.RekeyBegin"/> (§4.9).</summary>
+public enum RekeyBeginResult
+{
+    /// <summary>A new seed is pending; the current identity is still active.</summary>
+    Ok,
+    /// <summary>ERR_PIN_WRONG — counted, like a wrong VERIFY_PIN.</summary>
+    WrongPin,
+    /// <summary>ERR_PIN_BLOCKED — attempts exhausted.</summary>
+    Blocked,
+    /// <summary>ERR_PIN_REQUIRED — the session locked (idle timeout): unlock and retry.</summary>
+    SessionLocked,
+    /// <summary>The firmware predates the command, or is the challenge image.</summary>
+    NotSupported,
+}
+
+/// <summary>Outcome of <see cref="CryptinDongle.RekeyCommit"/> (§4.9).</summary>
+public enum RekeyCommitResult
+{
+    /// <summary>The new identity is live; the session is locked.</summary>
+    Ok,
+    /// <summary>ERR_REKEY_PIN_MISMATCH — not the new PIN; the pending seed is DROPPED.</summary>
+    PinMismatch,
+    /// <summary>ERR_REKEY_NONE — nothing pending (never begun, a reboot, or a mismatch before).</summary>
+    NothingPending,
+    /// <summary>ERR_PIN_REQUIRED — the session locked; the pending seed is still there.</summary>
+    SessionLocked,
+    /// <summary>The firmware predates the command, or is the challenge image.</summary>
+    NotSupported,
+}

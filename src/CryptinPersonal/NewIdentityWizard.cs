@@ -28,9 +28,19 @@ namespace CryptinPersonal;
 /// opened by the old identity only. The chip that comes back from this cannot
 /// open any of it, so the user decrypts what they need between the halves.
 ///
+/// **Or no reflash at all.** A firmware with CMD_REKEY_BEGIN/COMMIT (2026-10-30,
+/// CRYPTIN_PROTOCOL.md §4.9) makes the new seed in place: the old identity
+/// signs the first half, the chip hands the new words over, the user types the
+/// new PIN back, and the same window finishes. K_attestation does not change,
+/// which is why it is the only route on <c>-prod</c>, where the eFuse anchor
+/// refuses a chip that lost its NVS. Which route is decided once, by asking the
+/// chip (<see cref="CryptinDongle.SupportsOnChipRekey"/>); the beta firmware
+/// answers no and keeps the reflash.
+///
 /// ⚠️ Written on 2026-10-30, aligned the same day to the licence server's report
-/// (Tartufo 41afc3fd) while its endpoints were on no deployed server. Never
-/// walked.
+/// (Tartufo 41afc3fd). The reflash route was walked on β against the clone the
+/// same day; the on-chip route waits for the server to accept an unchanged
+/// attestation (Tartufo f34c35a1).
 /// </summary>
 internal sealed class NewIdentityWizard : Form
 {
@@ -44,6 +54,18 @@ internal sealed class NewIdentityWizard : Form
     private readonly Button _next = new();
 
     private int _step = 1;
+
+    /// <summary>The in-place route (§4.9) instead of the reflash. From the
+    /// resume record when there is one, otherwise asked of the chip.</summary>
+    private readonly bool _onChip;
+
+    /// <summary>Set when this window committed the new identity and unlocked it
+    /// with the new PIN: the last step then has nothing to reconnect or ask.</summary>
+    private bool _unlockedNew;
+
+    /// <summary>The caller's handle came through unlocked (the in-place route),
+    /// so the main window can stay unlocked instead of asking a third PIN.</summary>
+    internal bool SessionKept => _unlockedNew && _dongle.IsConnected;
 
     /// <summary>Same reason as <see cref="LicenseTransferWizard.RestartRequired"/>:
     /// the reflash replaces the USB device under this process, and only a new
@@ -95,6 +117,8 @@ internal sealed class NewIdentityWizard : Form
 
         Controls.AddRange([_heading, _detail, _body, _back, _next]);
 
+        _onChip = resume && settings.PendingRekey is { } recorded ? recorded.OnChip : ProbeOnChip(dongle);
+
         if (resume && !RestartRequired && settings.PendingRekey is { Ticket.Length: > 0 } pending)
         {
             if (pending.Reflashed)
@@ -118,6 +142,22 @@ internal sealed class NewIdentityWizard : Form
 
     private RekeyResume? Pending => _settings.PendingRekey;
 
+    /// <summary>Anything but a clear yes is the reflash: an older firmware, a
+    /// locked session, a dongle that did not answer. The reflash route is the
+    /// one that worked before this existed, so it is the safe default.</summary>
+    private static bool ProbeOnChip(CryptinDongle dongle)
+    {
+        if (!dongle.IsConnected) return false;
+        try
+        {
+            return dongle.SupportsOnChipRekey();
+        }
+        catch (CryptinDongleException)
+        {
+            return false;
+        }
+    }
+
     private void Show(int step)
     {
         _step = Math.Clamp(step, 1, 5);
@@ -132,7 +172,7 @@ internal sealed class NewIdentityWizard : Form
         {
             case 1: BuildExplain(); break;
             case 2: BuildDecrypt(); break;
-            case 3: BuildProgram(); break;
+            case 3: if (_onChip) BuildCreate(); else BuildProgram(); break;
             case 4: BuildFinish(); break;
             case 5: BuildDone(); break;
         }
@@ -163,8 +203,10 @@ internal sealed class NewIdentityWizard : Form
                 // Next on this step is not how it moves on: Program closes the
                 // wizard for the restart. Reaching here means it has not run.
                 MessageBox.Show(this,
-                    "Press Program first. Nothing has been changed on the chip yet.",
-                    "Program", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    _onChip
+                        ? "Press Create the new identity first. Nothing has been changed on the chip yet."
+                        : "Press Program first. Nothing has been changed on the chip yet.",
+                    _onChip ? "New identity" : "Program", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
 
             case 4:
@@ -195,7 +237,10 @@ internal sealed class NewIdentityWizard : Form
             Text =
                 "What it takes:\n" +
                 "• this dongle, unlocked — it is the one that proves the license is yours;\n" +
-                "• the UART cable, to program it;\n" +
+                (_onChip
+                    ? "• your current PIN once more, and paper for the new 24 words — the chip makes " +
+                      "the new identity itself, no cable and no programming;\n"
+                    : "• the UART cable, to program it;\n") +
                 "• time to decrypt your files first. The new identity cannot open anything " +
                 "encrypted with the old one.\n\n" +
                 "What changes:\n" +
@@ -248,6 +293,7 @@ internal sealed class NewIdentityWizard : Form
             Ticket = started.Ticket,
             TicketExpiresAt = started.ExpiresAt,
             OldIdentityHex = Convert.ToHexString(identity),
+            OnChip = _onChip,
             Reflashed = false,
             StartedAt = DateTimeOffset.Now,
         };
@@ -282,7 +328,9 @@ internal sealed class NewIdentityWizard : Form
                 Text =
                     "You can close this window and work in the main window as usual: drop the " +
                     ".crin files there to decrypt them. When you come back, this picks up here.\n\n" +
-                    "After the next step this dongle is erased and comes back with a new seed. " +
+                    (_onChip
+                        ? "After the next step this dongle has a new seed, and the old one is gone from it. "
+                        : "After the next step this dongle is erased and comes back with a new seed. ") +
                     // Not "with Transfer license" (said until 2026-10-30): after the move
                     // the old words own no licence, so that wizard would rebuild the chip
                     // and then end on "no license". Decrypting needs no licence, so a chip
@@ -476,6 +524,246 @@ internal sealed class NewIdentityWizard : Form
         }
     }
 
+    // --- step 3, in place: the chip makes the new seed (§4.9) --------------
+
+    private TextBox? _currentPin;
+
+    private void BuildCreate()
+    {
+        _heading.Text = "Create the new identity";
+        _detail.Text = "The dongle makes a new seed and shows you its 24 words and PIN. The old " +
+                       "identity stays in charge until you type the new PIN back.";
+
+        _currentPin = new TextBox
+        {
+            Location = new Point(220, 2),
+            Size = new Size(120, 26),
+            MaxLength = HidConstants.PinLength,
+            UseSystemPasswordChar = true,
+        };
+        var create = new Button { Text = "Create the new identity", Location = new Point(0, 40), Size = new Size(220, 30) };
+        create.Click += async (_, _) => await CreateAsync(create);
+
+        _body.Controls.AddRange([
+            new Label { Location = new Point(0, 5), Size = new Size(215, 22), Text = "Your CURRENT PIN, once more:" },
+            _currentPin,
+            create,
+            new Label
+            {
+                Location = new Point(0, 84),
+                Size = new Size(600, 240),
+                Text =
+                    "Asked again although the dongle is unlocked: changing identity is not something " +
+                    "a program riding an open session should be able to do. A wrong PIN counts, as it " +
+                    "always does.\n\n" +
+                    "Have paper ready. The new words are shown once; then you type the NEW PIN back, " +
+                    "from the paper. That is the moment the dongle switches — if the PIN does not " +
+                    "match, nothing switches and the words you wrote are void.\n\n" +
+                    "If you close this or unplug the dongle before that, the old identity simply stays.",
+            },
+        ]);
+    }
+
+    private async Task CreateAsync(Button create)
+    {
+        if (_currentPin is not { TextLength: HidConstants.PinLength } box || !box.Text.All(char.IsAsciiDigit))
+        {
+            MessageBox.Show(this, $"Type your current PIN: {HidConstants.PinLength} digits.",
+                "New identity", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        create.Enabled = false;
+        try
+        {
+            var current = box.Text.ToCharArray();
+            box.Clear();
+            RekeyBeginResult begun;
+            ProvisioningHandover? handover;
+            try
+            {
+                (begun, handover) = await Task.Run(() =>
+                {
+                    var r = _dongle.RekeyBegin(current, out var h);
+                    return (r, h);
+                });
+            }
+            finally
+            {
+                Array.Clear(current);
+            }
+
+            if (begun != RekeyBeginResult.Ok)
+            {
+                MessageBox.Show(this, begun switch
+                {
+                    RekeyBeginResult.WrongPin => "That is not the current PIN. The attempt was counted, " +
+                                                 "as on the PIN window.",
+                    RekeyBeginResult.Blocked => "Too many wrong PINs: the dongle is blocked. Only a recovery " +
+                                                "from the 24 words unblocks it.",
+                    RekeyBeginResult.SessionLocked => "The dongle locked itself after ten idle minutes. Close " +
+                                                      "this, unlock it in the main window and start New identity " +
+                                                      "again — it carries on from here.",
+                    _ => "This dongle's firmware cannot make a new identity in place.",
+                }, "New identity", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // From here a new seed is pending on the chip, and this is its only copy.
+            using (handover)
+            {
+                using (var shown = new HandoverForm(handover!, _dongle.UsbSerial))
+                    if (shown.ShowDialog(this) != DialogResult.OK)
+                    {
+                        MessageBox.Show(this,
+                            "Nothing changed: the dongle keeps its current identity. The words that were " +
+                            "on screen are void — press Create again for a fresh set when you are ready.",
+                            "New identity", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+            }
+
+            await CommitAsync();
+        }
+        catch (CryptinDongleException e)
+        {
+            MessageBox.Show(this, e.Message, "New identity", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            create.Enabled = true;
+        }
+    }
+
+    /// <summary>
+    /// The switch. The PIN is typed, not passed along from the handover: it is
+    /// the user's proof that the paper holds what the chip is about to become.
+    /// </summary>
+    private async Task CommitAsync()
+    {
+        while (true)
+        {
+            var typed = AskNewPin();
+            if (typed is null)
+            {
+                MessageBox.Show(this,
+                    "Nothing changed: the dongle keeps its current identity, and the new words are void. " +
+                    "Press Create again when you are ready.",
+                    "New identity", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            RekeyCommitResult committed;
+            try
+            {
+                committed = await Task.Run(() => _dongle.RekeyCommit(typed));
+            }
+            finally
+            {
+                Array.Clear(typed);
+            }
+
+            switch (committed)
+            {
+                case RekeyCommitResult.Ok:
+                    break;
+
+                case RekeyCommitResult.SessionLocked:
+                    // Idle too long while writing. The pending seed is still on the
+                    // chip; unlocking with the CURRENT (old) PIN keeps it.
+                    MessageBox.Show(this,
+                        "The dongle locked itself while you were writing. Unlock it with your CURRENT " +
+                        "PIN — the old one — and then type the new PIN again.",
+                        "New identity", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    using (var pin = new PinForm(_dongle, _dongle.UsbSerial))
+                        if (pin.ShowDialog(this) != DialogResult.OK) return;
+                    continue;
+
+                case RekeyCommitResult.PinMismatch:
+                    MessageBox.Show(this,
+                        "That is not the PIN shown with the new words, so the dongle did NOT switch: it " +
+                        "keeps its current identity. The words you just wrote down are void — cross them " +
+                        "out.\n\nPress Create again for a fresh set.",
+                        "New identity", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+
+                default:
+                    MessageBox.Show(this,
+                        "The dongle had no new identity waiting — it was unplugged or restarted since it " +
+                        "showed the words. It keeps its current identity; those words are void.\n\n" +
+                        "Press Create again for a fresh set.",
+                        "New identity", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+            }
+            break;
+        }
+
+        // Switched. Recorded at once: from here the only way back to the licence
+        // is the second half, and a crash must resume there.
+        if (Pending is { } pending)
+        {
+            pending.Reflashed = true;
+            _settings.Save();
+        }
+
+        MessageBox.Show(this,
+            "The dongle now has its new identity. Unlock it with the NEW PIN to move the license.",
+            "New identity", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        using (var pin = new PinForm(_dongle, _dongle.UsbSerial))
+            _unlockedNew = pin.ShowDialog(this) == DialogResult.OK;
+        Show(4);
+    }
+
+    /// <summary>The new PIN, as typed from the paper; null if the user backed out.
+    /// A char array so the caller can wipe it.</summary>
+    private char[]? AskNewPin()
+    {
+        using var form = new Form
+        {
+            Text = "Crypt-in — the NEW PIN",
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            StartPosition = FormStartPosition.CenterParent,
+            ClientSize = new Size(380, 150),
+        };
+        var box = new TextBox
+        {
+            Location = new Point(20, 62),
+            Size = new Size(120, 26),
+            MaxLength = HidConstants.PinLength,
+            UseSystemPasswordChar = true,
+        };
+        var ok = new Button { Text = "Switch", Location = new Point(160, 106), Size = new Size(96, 30), DialogResult = DialogResult.OK };
+        var cancel = new Button { Text = "Cancel", Location = new Point(264, 106), Size = new Size(96, 30), DialogResult = DialogResult.Cancel };
+        form.Controls.AddRange([
+            new Label
+            {
+                Location = new Point(20, 14),
+                Size = new Size(340, 44),
+                Text = "Type the NEW PIN from your paper. One try: a wrong one keeps the old identity " +
+                       "and voids the new words.",
+            },
+            box, ok, cancel,
+        ]);
+        form.AcceptButton = ok;
+        form.CancelButton = cancel;
+
+        while (form.ShowDialog(this) == DialogResult.OK)
+        {
+            if (box.TextLength == HidConstants.PinLength && box.Text.All(char.IsAsciiDigit))
+            {
+                var typed = box.Text.ToCharArray();
+                box.Clear();
+                return typed;
+            }
+            MessageBox.Show(form, $"The PIN is {HidConstants.PinLength} digits.", "New PIN",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        box.Clear();
+        return null;
+    }
+
     // --- step 4: the second half -------------------------------------------
 
     private void BuildFinish()
@@ -483,8 +771,8 @@ internal sealed class NewIdentityWizard : Form
         _heading.Text = "Move the license onto the new identity";
         _detail.Text =
             $"Started on {Pending?.StartedAt.LocalDateTime:dd/MM/yyyy HH:mm}; the server holds it until " +
-            $"{Pending?.TicketExpiresAt.LocalDateTime:dd/MM/yyyy HH:mm}. Connect the dongle on its native " +
-            "USB socket — not the UART one.";
+            $"{Pending?.TicketExpiresAt.LocalDateTime:dd/MM/yyyy HH:mm}." +
+            (_unlockedNew ? "" : " Connect the dongle on its native USB socket — not the UART one.");
 
         _body.Controls.Add(new Label
         {
@@ -492,11 +780,15 @@ internal sealed class NewIdentityWizard : Form
             Size = new Size(600, 300),
             ForeColor = SystemColors.GrayText,
             Text =
-                "Next shows the NEW 24 words if they have not been shown yet — write them down, they " +
-                "are the only way back to this identity — and then asks for the NEW PIN that comes " +
-                "with them.\n\n" +
-                "If no dialog appears, unplug the dongle, wait about ten seconds and plug it back " +
-                "in: Windows can leave the old device instance behind after programming.\n\n" +
+                (_unlockedNew
+                    ? "The dongle has its new identity and is unlocked with the new PIN. Next asks the " +
+                      "server to move the license onto it.\n\n"
+                    : "Next shows the NEW 24 words if they have not been shown yet — write them down, they " +
+                      "are the only way back to this identity — and then asks for the NEW PIN that comes " +
+                      "with them.\n\n" +
+                      (_onChip ? "" :
+                          "If no dialog appears, unplug the dongle, wait about ten seconds and plug it back " +
+                          "in: Windows can leave the old device instance behind after programming.\n\n")) +
                 "This is the step that moves the license. It uses the once-a-year allowance for a " +
                 "new identity, not one of your three transfers.",
         });
@@ -516,30 +808,10 @@ internal sealed class NewIdentityWizard : Form
             return false;
         }
 
-        var attached = CryptinDongle.ListSerials();
-        if (attached.Count == 0)
-        {
-            MessageBox.Show(this,
-                "No dongle is answering. Connect it on its native USB socket — on the UART socket " +
-                "it is a COM port and speaks no HID.",
-                "New identity", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return false;
-        }
-
-        _dongle.Disconnect();
-        if (!_dongle.Connect(attached[0], waitMs: 5000))
-        {
-            MessageBox.Show(this, "The dongle will not open. Disconnect it and connect it again.",
-                "New identity", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return false;
-        }
-
-        // Before the PIN: the new PIN comes out of the new seed, and nobody can
-        // know it until the handover has been read.
-        if (!ProvisioningHandoverUi.EnsureHandedOver(this, _dongle)) return false;
-
-        using (var pin = new PinForm(_dongle, _dongle.UsbSerial))
-            if (pin.ShowDialog(this) != DialogResult.OK) return false;
+        // Committed in place by this same window and unlocked with the new PIN:
+        // same handle, same session, nothing to hand over. Otherwise (a reflash,
+        // or a resume after a restart) the dongle is found and unlocked anew.
+        if (!_unlockedNew && !ReconnectAndUnlock()) return false;
 
         byte[] identity;
         try
@@ -559,8 +831,11 @@ internal sealed class NewIdentityWizard : Form
         if (Convert.ToHexString(identity).Equals(pending.OldIdentityHex, StringComparison.OrdinalIgnoreCase))
         {
             MessageBox.Show(this,
-                "This dongle still has the OLD identity: it was not erased.\n\n" +
-                "Close this window and start New identity again; it will offer to program it. " +
+                (_onChip
+                    ? "This dongle still has the OLD identity: the switch did not happen.\n\n" +
+                      "Close this window and start New identity again; it will offer to create it. "
+                    : "This dongle still has the OLD identity: it was not erased.\n\n" +
+                      "Close this window and start New identity again; it will offer to program it. ") +
                 "The license has not moved.",
                 "Still the old identity", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return false;
@@ -629,6 +904,37 @@ internal sealed class NewIdentityWizard : Form
                       "license in the main window — the server will hand the same token back."),
             "New identity", MessageBoxButtons.OK,
             landed && !expired ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+        return true;
+    }
+
+    /// <summary>After a reflash or a restart: find the dongle, hand over the new
+    /// words if it still holds them, and unlock it with the new PIN.</summary>
+    private bool ReconnectAndUnlock()
+    {
+        var attached = CryptinDongle.ListSerials();
+        if (attached.Count == 0)
+        {
+            MessageBox.Show(this,
+                "No dongle is answering. Connect it on its native USB socket — on the UART socket " +
+                "it is a COM port and speaks no HID.",
+                "New identity", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+
+        _dongle.Disconnect();
+        if (!_dongle.Connect(attached[0], waitMs: 5000))
+        {
+            MessageBox.Show(this, "The dongle will not open. Disconnect it and connect it again.",
+                "New identity", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+
+        // Before the PIN: the new PIN comes out of the new seed, and nobody can
+        // know it until the handover has been read.
+        if (!ProvisioningHandoverUi.EnsureHandedOver(this, _dongle)) return false;
+
+        using (var pin = new PinForm(_dongle, _dongle.UsbSerial))
+            if (pin.ShowDialog(this) != DialogResult.OK) return false;
         return true;
     }
 

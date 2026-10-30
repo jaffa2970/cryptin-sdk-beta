@@ -96,6 +96,15 @@ public static class HidConstants
     /// <summary>Format v2 decryption. No licence gate; PIN gate as 0x0E.</summary>
     public const byte CmdDecryptBlockV2 = 0x10;
 
+    /// <summary>New identity on the same chip (2026-10-30, §4.9): takes the
+    /// current PIN again, replies with the new 32-byte entropy and 6-digit PIN.
+    /// Behind the PIN gate; the PIN in it is counted like CMD_VERIFY_PIN.</summary>
+    public const byte CmdRekeyBegin = 0x11;
+
+    /// <summary>Makes the pending seed the identity; takes the NEW PIN, one try.
+    /// On success the session is locked: unlock again with the new PIN.</summary>
+    public const byte CmdRekeyCommit = 0x12;
+
     // --- status codes (§5) ------------------------------------------------
     public const byte StatusOk = 0x00;
     public const byte StatusNotReady = 0x01;
@@ -115,6 +124,14 @@ public static class HidConstants
     /// <summary>The chip's minimum spacing between two CMD_VERIFY_PIN
     /// (PIN_VERIFY_MIN_INTERVAL_MS).</summary>
     public const int PinVerifyMinIntervalMs = 1000;
+
+    /// <summary>CMD_REKEY_COMMIT with no pending seed (never begun, dropped by a
+    /// reboot or by a wrong PIN).</summary>
+    public const byte ErrRekeyNone = 0xE6;
+
+    /// <summary>CMD_REKEY_COMMIT with a PIN that is not the pending seed's. The
+    /// pending seed is dropped: start again with CMD_REKEY_BEGIN.</summary>
+    public const byte ErrRekeyPinMismatch = 0xE7;
 
     // --- licence enforcement (§8) -----------------------------------------
     public const byte ErrInvalidJwt = 0xF1;
@@ -256,6 +273,8 @@ public static class HidConstants
         ErrPinBlocked => "ERR_PIN_BLOCKED",
         ErrAlreadyAcknowledged => "ERR_ALREADY_ACKNOWLEDGED",
         ErrPinTooSoon => "ERR_PIN_TOO_SOON",
+        ErrRekeyNone => "ERR_REKEY_NONE",
+        ErrRekeyPinMismatch => "ERR_REKEY_PIN_MISMATCH",
         ErrInvalidJwt => "ERR_INVALID_JWT",
         ErrJwtExpired => "ERR_JWT_EXPIRED",
         ErrNoLicense => "ERR_NO_LICENSE",

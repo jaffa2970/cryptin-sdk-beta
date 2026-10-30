@@ -239,6 +239,120 @@ public sealed class CryptinDongle : IDisposable
         => Exchange(HidConstants.CmdAckProvisioning, ReadOnlySpan<byte>.Empty, throwOnStatus: true);
 
     /// <summary>
+    /// §4.9 — does this firmware have the same-chip rekey? Asked with a
+    /// deliberately malformed CMD_REKEY_BEGIN (no PIN): a firmware that has it
+    /// answers STATUS_BAD_LENGTH before it looks at any PIN, so nothing is
+    /// counted and nothing is minted; one that predates it answers
+    /// STATUS_UNKNOWN_CMD; the challenge image answers ERR_DEPRECATED.
+    /// Needs an unlocked session, like the command itself.
+    /// </summary>
+    /// <exception cref="PinRequiredException">The session is locked.</exception>
+    public bool SupportsOnChipRekey()
+    {
+        var reply = Exchange(HidConstants.CmdRekeyBegin, ReadOnlySpan<byte>.Empty, throwOnStatus: false);
+        ThrowForStatus(HidConstants.CmdRekeyBegin, reply.Status);
+        return reply.Status == HidConstants.StatusBadLength;
+    }
+
+    /// <summary>
+    /// §4.9 — mints a new seed on this same chip and hands it over, while the
+    /// current identity stays active. Takes the CURRENT PIN again, counted like
+    /// <see cref="VerifyPin(string)"/>. On <see cref="RekeyBeginResult.Ok"/>
+    /// <paramref name="newIdentity"/> holds the new words and PIN: show them, then
+    /// <see cref="RekeyCommit"/>. They cannot be read back: a lost reply means
+    /// calling this again, which replaces the pending seed.
+    /// </summary>
+    public RekeyBeginResult RekeyBegin(ReadOnlySpan<char> currentPin, out ProvisioningHandover? newIdentity)
+    {
+        newIdentity = null;
+        var digits = PinBytes(currentPin);
+        try
+        {
+            // Same one-per-second spacing as VERIFY_PIN, same retry.
+            var reply = Exchange(HidConstants.CmdRekeyBegin, digits, throwOnStatus: false);
+            var deadline = Environment.TickCount64 + 3 * HidConstants.PinVerifyMinIntervalMs;
+            while (reply.Status == HidConstants.ErrPinTooSoon && Environment.TickCount64 < deadline)
+            {
+                Thread.Sleep(HidConstants.PinVerifyMinIntervalMs / 4);
+                reply = Exchange(HidConstants.CmdRekeyBegin, digits, throwOnStatus: false);
+            }
+
+            switch (reply.Status)
+            {
+                case HidConstants.StatusOk:
+                    var entropy = reply.Payload.AsSpan(0, HidConstants.EntropySize).ToArray();
+                    var pin = System.Text.Encoding.ASCII.GetString(
+                        reply.Payload, HidConstants.EntropySize, HidConstants.PinLength);
+                    CryptographicOperations.ZeroMemory(reply.Payload);
+                    newIdentity = new ProvisioningHandover(entropy, pin);
+                    return RekeyBeginResult.Ok;
+                case HidConstants.ErrPinWrong: return RekeyBeginResult.WrongPin;
+                case HidConstants.ErrPinBlocked: return RekeyBeginResult.Blocked;
+                case HidConstants.ErrPinRequired: return RekeyBeginResult.SessionLocked;
+                case HidConstants.StatusUnknownCmd:
+                case HidConstants.ErrDeprecated: return RekeyBeginResult.NotSupported;
+                default:
+                    throw new CryptinDongleException(
+                        $"CMD_REKEY_BEGIN answered {HidConstants.DescribeStatus(reply.Status)}");
+            }
+        }
+        finally
+        {
+            Array.Clear(digits);
+        }
+    }
+
+    /// <summary>
+    /// §4.9 — makes the pending seed this dongle's identity. Takes the NEW PIN,
+    /// one try: a wrong one drops the pending seed
+    /// (<see cref="RekeyCommitResult.PinMismatch"/>) and the user starts again
+    /// from <see cref="RekeyBegin"/>. On <see cref="RekeyCommitResult.Ok"/> the
+    /// session is locked: <see cref="VerifyPin(string)"/> with the new PIN.
+    /// </summary>
+    public RekeyCommitResult RekeyCommit(ReadOnlySpan<char> newPin)
+    {
+        var digits = PinBytes(newPin);
+        try
+        {
+            var reply = Exchange(HidConstants.CmdRekeyCommit, digits, throwOnStatus: false);
+            return reply.Status switch
+            {
+                HidConstants.StatusOk => RekeyCommitResult.Ok,
+                HidConstants.ErrRekeyPinMismatch => RekeyCommitResult.PinMismatch,
+                HidConstants.ErrRekeyNone => RekeyCommitResult.NothingPending,
+                HidConstants.ErrPinRequired => RekeyCommitResult.SessionLocked,
+                // A PIN of the wrong length never reaches the comparison and
+                // drops nothing; to the user it is the same mistake.
+                HidConstants.StatusBadLength => RekeyCommitResult.PinMismatch,
+                HidConstants.StatusUnknownCmd or HidConstants.ErrDeprecated => RekeyCommitResult.NotSupported,
+                var other => throw new CryptinDongleException(
+                    $"CMD_REKEY_COMMIT answered {HidConstants.DescribeStatus(other)}"),
+            };
+        }
+        finally
+        {
+            Array.Clear(digits);
+        }
+    }
+
+    private static byte[] PinBytes(ReadOnlySpan<char> pin)
+    {
+        if (pin.Length > HidConstants.PayloadSize - 2)
+            throw new ArgumentException($"a PIN of {pin.Length} characters does not fit in one report", nameof(pin));
+        var digits = new byte[pin.Length];
+        for (var i = 0; i < pin.Length; i++)
+        {
+            if (pin[i] > 0x7F)
+            {
+                Array.Clear(digits);
+                throw new ArgumentException("the PIN is ASCII digits", nameof(pin));
+            }
+            digits[i] = (byte)pin[i];
+        }
+        return digits;
+    }
+
+    /// <summary>
     /// §8 — hands the licence token to the dongle, which verifies its RSA
     /// signature itself and stores it only if it holds.
     ///

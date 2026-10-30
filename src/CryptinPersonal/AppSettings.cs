@@ -271,9 +271,15 @@ internal sealed class RekeyResume
     /// onto the identity it is already on.</summary>
     public string OldIdentityHex { get; set; } = "";
 
-    /// <summary>Set when the chip has been reflashed. Before it, resuming goes
+    /// <summary>Set when the chip carries the new identity — reflashed, or
+    /// (with <see cref="OnChip"/>) committed in place. Before it, resuming goes
     /// back to the decrypt-then-program steps; after it, straight to the last.</summary>
     public bool Reflashed { get; set; }
+
+    /// <summary>The firmware changes identity in place (CMD_REKEY_BEGIN/COMMIT,
+    /// 2026-10-30): no UART, no reflash, no restart. Decided once, at the start,
+    /// by asking the chip.</summary>
+    public bool OnChip { get; set; }
 
     /// <summary>When the ticket was taken, so the offer can name it.</summary>
     public DateTimeOffset StartedAt { get; set; }

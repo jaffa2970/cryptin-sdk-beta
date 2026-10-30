@@ -199,6 +199,41 @@ public static class LicenseErrorCodes
     /// checkout, or this code arrives after the money.</summary>
     public const string BetaNotRenewable = "BETA_NOT_RENEWABLE";
 
+    // POST /api/dongle/rekey/start and /finish (G2, 2026-10-30). Names checked
+    // against the licence server's report of the same day (Tartufo 41afc3fd,
+    // docs/CRYPTIN_DLL_RICOGNIZIONE_API.md §14), written while the endpoints
+    // were still in its working tree and on no deployed server.
+
+    /// <summary>400 from <c>rekey/finish</c>: no open ticket with that value —
+    /// never issued, already used, or replaced by a later <c>rekey/start</c>.</summary>
+    public const string TicketInvalid = "TICKET_INVALID";
+
+    /// <summary>400 from <c>rekey/finish</c>: the ticket ran out. Nothing moved;
+    /// the old words on a recovered chip can start again.</summary>
+    public const string TicketExpired = "TICKET_EXPIRED";
+
+    /// <summary>409 from <c>rekey/finish</c>: the new identity already holds a
+    /// licence. The chip was not reflashed, or it was activated in between.</summary>
+    public const string IdentityInUse = "IDENTITY_IN_USE";
+
+    /// <summary>429 from <c>rekey/start</c> as well as <c>rekey/finish</c>: one
+    /// rekey per licence per 365 days, counted apart from the three transfers.
+    /// <c>next_available</c> says when. Checked at start on purpose, so a wizard
+    /// stops before it erases a working dongle for nothing.</summary>
+    public const string RekeyRateLimit = "REKEY_RATE_LIMIT";
+
+    /// <summary>
+    /// The <c>reason</c> (not a code) that comes with <c>409 ALREADY_ACTIVATED</c>
+    /// from <c>/api/activate</c> when the seed was retired by a rekey. Final;
+    /// only the admin panel lifts it.
+    ///
+    /// Why it exists (licence server, decided by Tommy on 2026-10-30): a rekey
+    /// drops the registered backups, but the backup chip still carries the old
+    /// seed, and with the beta code it could activate a second free licence.
+    /// Every rekey would have handed one out.
+    /// </summary>
+    public const string ReasonIdentityRekeyed = "IDENTITY_REKEYED";
+
     // POST /api/stripe/create-checkout-session (contract §12.4).
 
     /// <summary>400 — unknown or empty SKU. Our bug, not the user's.</summary>

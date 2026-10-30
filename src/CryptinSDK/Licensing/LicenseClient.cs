@@ -373,6 +373,81 @@ public sealed class LicenseClient : IDisposable
     }
 
     /// <summary>
+    /// <c>POST /api/dongle/rekey/start</c> — first half of moving the licence onto
+    /// a new identity. Changes nothing on the licence: it returns a ticket that
+    /// <see cref="RekeyFinishAsync"/> presents after the chip has been reflashed.
+    ///
+    /// Two halves because one chip cannot sign with both identities: the new
+    /// seed is only minted by erasing the old one. The alternative — signing this
+    /// half on the host with a K_identity derived from the 24 words — was turned
+    /// down on 2026-10-30, because it puts the identity's private key on the PC.
+    /// </summary>
+    /// <param name="dongle">The dongle the licence is on now: connected, unlocked,
+    /// and the main one — a registered backup is refused with
+    /// ATTESTATION_MISMATCH.</param>
+    public async Task<RekeyStartResponse> RekeyStartAsync(CryptinDongle dongle, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(dongle);
+
+        return await OnceMoreOnAsync(LicenseErrorCodes.ConcurrentRetry, ConcurrentRetryPause,
+            async () =>
+            {
+                var challenge = await GetActivationChallengeAsync(ct).ConfigureAwait(false);
+                var nonce = Convert.FromHexString(challenge.Challenge);
+
+                var request = new RekeyStartRequest
+                {
+                    ChallengeId = challenge.ChallengeId,
+                    ChallengeSignature = Hex(dongle.Challenge(nonce)),
+                    IdentityPubkey = Hex(dongle.GetIdentityPubKey()),
+                    AttestationPubkey = Hex(dongle.GetAttestationPubKey()),
+                };
+
+                using var response = await _http
+                    .PostAsJsonAsync("/api/dongle/rekey/start", request, Json, ct).ConfigureAwait(false);
+                return await ReadAsync<RekeyStartResponse>(response, ct).ConfigureAwait(false);
+            }, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// <c>POST /api/dongle/rekey/finish</c> — second half: the reflashed chip,
+    /// under its new identity, claims the licence with the ticket.
+    ///
+    /// Does not hand the token to the chip, like <see cref="RecoverAsync"/> and
+    /// for the same reason: the caller has to decide whether an already expired
+    /// token is worth sending, and has to say what happened either way.
+    /// </summary>
+    /// <param name="dongle">The reflashed chip, connected and unlocked with its
+    /// new PIN.</param>
+    /// <param name="ticket">From <see cref="RekeyStartAsync"/>.</param>
+    public async Task<RekeyFinishResponse> RekeyFinishAsync(
+        CryptinDongle dongle, string ticket, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(dongle);
+        ArgumentException.ThrowIfNullOrWhiteSpace(ticket);
+
+        return await OnceMoreOnAsync(LicenseErrorCodes.ConcurrentRetry, ConcurrentRetryPause,
+            async () =>
+            {
+                var challenge = await GetActivationChallengeAsync(ct).ConfigureAwait(false);
+                var nonce = Convert.FromHexString(challenge.Challenge);
+
+                var request = new RekeyFinishRequest
+                {
+                    Ticket = ticket,
+                    ChallengeId = challenge.ChallengeId,
+                    ChallengeSignature = Hex(dongle.Challenge(nonce)),
+                    NewIdentityPubkey = Hex(dongle.GetIdentityPubKey()),
+                    NewAttestationPubkey = Hex(dongle.GetAttestationPubKey()),
+                };
+
+                using var response = await _http
+                    .PostAsJsonAsync("/api/dongle/rekey/finish", request, Json, ct).ConfigureAwait(false);
+                return await ReadAsync<RekeyFinishResponse>(response, ct).ConfigureAwait(false);
+            }, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// <c>POST /api/verify</c> — checks the hardware and the commercial state of
     /// the licence in one call: clone, revocation and expiry are three distinct
     /// outcomes.

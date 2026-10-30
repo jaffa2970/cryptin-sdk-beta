@@ -147,6 +147,7 @@ internal sealed class MainForm : Form
     private readonly Button _backup = new();
     private readonly Button _transfer = new();
     private readonly Button _firmware = new();
+    private readonly Button _newIdentity = new();
 
     private DongleState _state = DongleState.Disconnected;
 
@@ -573,6 +574,23 @@ internal sealed class MainForm : Form
         _firmware.FlatStyle = FlatStyle.Flat;
         _firmware.Enabled = false;
 
+        // The G2 cure (2026-10-30). Same quiet row: most people never need it,
+        // and the advisory is what sends the ones who do.
+        _newIdentity.Text = "New identity";
+        _newIdentity.Location = new Point(418, 542);
+        _newIdentity.Size = new Size(126, 24);
+        _newIdentity.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
+        _newIdentity.Font = muted;
+        _newIdentity.ForeColor = SystemColors.GrayText;
+        _newIdentity.FlatStyle = FlatStyle.Flat;
+        _newIdentity.Click += (_, _) => NewIdentity();
+
+        tips.SetToolTip(_newIdentity,
+            "Give this dongle a new seed — new 24 words, new PIN — and keep the license.\n" +
+            "For dongles set up with the first beta (advisory G2). Decrypt your files\n" +
+            "first: the new identity cannot open what the old one encrypted.\n" +
+            "Once a year; it does not use one of the three transfers.");
+
         tips.SetToolTip(_backup, "Register a second chip on this license. Free, once a year.\n" +
                                  "Needs the 24 words and the backup chip.\n" +
                                  "Both dongles keep working \u2014 this does not move anything.");
@@ -591,7 +609,7 @@ internal sealed class MainForm : Form
             "Flashing needs the second cable on the UART socket, and a production\n" +
             "dongle refuses write-flash altogether — Secure Download Mode.");
 
-        Controls.AddRange([_enterPin, _lock, _activate, _loadLicence, _backup, _transfer, _firmware]);
+        Controls.AddRange([_enterPin, _lock, _activate, _loadLicence, _backup, _transfer, _firmware, _newIdentity]);
     }
 
     private void ShowAbout() => MessageBox.Show(this,
@@ -685,6 +703,9 @@ internal sealed class MainForm : Form
         // Not `unlocked`, unlike every other button here. See where it is built.
         _transfer.Enabled = !busy;
         _firmware.Enabled = false;          // no update path in the beta, ever
+        // Starting needs the dongle unlocked (it signs the first half); a move
+        // already under way does not, since its dongle may be mid-reflash.
+        _newIdentity.Enabled = !busy && (unlocked || _settings.PendingRekey is not null);
         _activate.Enabled = unlocked;
         _loadLicence.Enabled = unlocked;
 
@@ -722,6 +743,7 @@ internal sealed class MainForm : Form
             OfferHandoverIfPending();
             OfferBackupResume();
             OfferTransferResume();
+            OfferRekeyResume();
             return;
         }
 
@@ -764,6 +786,7 @@ internal sealed class MainForm : Form
         // FirstRunCompleted is false and stays false.
         OfferBackupResume();
         OfferTransferResume();
+        OfferRekeyResume();
     }
 
     /// <summary>
@@ -922,6 +945,82 @@ internal sealed class MainForm : Form
 
         _connectedSerial = "";
         SetState(DongleState.Disconnected);
+        PollDongle();
+    }
+
+    // --- moving the licence to a new identity ------------------------------
+
+    /// <summary>
+    /// Opens the new-identity wizard (G2). A move under way is offered back
+    /// first, as the transfer does: starting over would ask the server for a
+    /// second ticket and silently void the first.
+    /// </summary>
+    private void NewIdentity()
+    {
+        if (_busy) return;
+
+        if (NewIdentityWizard.RestartRequired)
+        {
+            MessageBox.Show(this, NewIdentityWizard.RestartMessage,
+                "New identity — one restart left", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        var resume = false;
+        if (_settings.PendingRekey is { } pending)
+        {
+            var answer = MessageBox.Show(this,
+                $"A move to a new identity was started on {pending.StartedAt.LocalDateTime:dd/MM/yyyy} at " +
+                $"{pending.StartedAt.LocalDateTime:HH:mm} and is not finished.\n\n" +
+                "Yes carries on from where it stopped.\n" +
+                "No starts again from the beginning — only possible with the dongle still on its " +
+                "old identity, and it replaces the earlier request on the server.",
+                "Unfinished move", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+
+            if (answer == DialogResult.Cancel) return;
+            resume = answer == DialogResult.Yes;
+        }
+
+        if (!resume && !EnsureUnlocked()) return;
+
+        RunNewIdentityWizard(resume);
+    }
+
+    /// <summary>
+    /// The other half of the restart the wizard asks for after the reflash. Only
+    /// then: before it, the move is waiting on the user's own decrypting, and
+    /// asking about it on every launch would be nagging, not help.
+    /// </summary>
+    private void OfferRekeyResume()
+    {
+        if (_settings.PendingRekey is not { Reflashed: true } pending) return;
+
+        var answer = MessageBox.Show(this,
+            $"Your dongle was given a new identity on {pending.StartedAt.LocalDateTime:dd/MM/yyyy} and " +
+            "the license has not moved onto it yet.\n\n" +
+            "Until it does, the dongle cannot encrypt anything. The server holds the license for the " +
+            $"move until {pending.TicketExpiresAt.LocalDateTime:dd/MM/yyyy HH:mm}.\n\n" +
+            "Finish it now? Plug the dongle in on its native USB socket first.\n\n" +
+            "No means this will be offered again on the next start.",
+            "Finish the new identity", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        if (answer != DialogResult.Yes) return;
+
+        RunNewIdentityWizard(resume: true);
+    }
+
+    /// <summary>Shared by the button and the resume offer. The wizard reflashes
+    /// and reconnects the dongle, so no session survives it.</summary>
+    private void RunNewIdentityWizard(bool resume)
+    {
+        using (Foreground())
+        {
+            using var wizard = new NewIdentityWizard(_dongle, _settings, resume);
+            wizard.ShowDialog(this);
+        }
+
+        _connectedSerial = "";
+        SetState(DongleState.Disconnected);
+        ApplyState();
         PollDongle();
     }
 

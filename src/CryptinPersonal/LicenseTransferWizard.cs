@@ -862,6 +862,10 @@ internal sealed class LicenseTransferWizard : Form
         // transfer that is done, and doing it twice would spend a second one of
         // three for nothing.
         _settings.PendingTransfer = null;
+        // The server voids any open rekey ticket of the licence on a transfer
+        // (report 41afc3fd): the ticket belonged to the chip that was main at
+        // the time. Kept, it would offer a move that can only fail.
+        _settings.PendingRekey = null;
         _settings.Save();
 
         // An expired licence can still be moved, on purpose: renewal wants the

@@ -343,6 +343,15 @@ internal sealed class ActivationForm : Form
 
     private static string Describe(Exception e) => e switch
     {
+        // Before the generic ALREADY_ACTIVATED, which it arrives as. The seed
+        // was retired by a move to a new identity -- typically a backup chip
+        // that still carries it -- and the server refuses it for good.
+        LicenseApiException x when x.Code == LicenseErrorCodes.AlreadyActivated
+                                  && x.Reason == LicenseErrorCodes.ReasonIdentityRekeyed =>
+            "This recovery phrase has been replaced: its license was moved to a new identity. " +
+            "A dongle carrying these words cannot be activated again. Use the dongle with the " +
+            "new words.",
+
         LicenseApiException x when x.Code == LicenseErrorCodes.AlreadyActivated =>
             "This dongle already has an active license, or that payment has already been used. " +
             "One payment activates one dongle.",

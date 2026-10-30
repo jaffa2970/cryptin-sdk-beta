@@ -273,7 +273,7 @@ internal static class Program
         }
         else if (!args.Contains("activate") && !args.Contains("activate-b")
                  && !args.Contains("renew") && !args.Contains("register-backup")
-                 && !args.Contains("recovery"))
+                 && !args.Contains("recovery") && !args.Contains("activate-beta-clone"))
         {
             Console.WriteLine("\n(sottocomandi: 'verify', 'activate', 'activate-b', 'renew',\n" +
                               " 'register-backup --backup-attestation <hex64> [--label X]',\n" +
@@ -282,6 +282,7 @@ internal static class Program
             return 0;
         }
 
+        if (args.Contains("activate-beta-clone")) return ActivateBetaOnClone(dongle);
         if (args.Contains("recovery")) return Recovery(dongle, args);
         if (args.Contains("register-backup")) return RegisterBackup(dongle, args);
         if (args.Contains("renew")) return Renew(dongle);
@@ -674,6 +675,94 @@ internal static class Program
     /// that gets past the signature check creates a live 365-day licence row —
     /// so the harness says what it is about to do before doing it.
     /// </summary>
+    /// <summary>
+    /// The red-team clone's last link: does a real chip accept a token the clone
+    /// signed? The clone holds K_old since 2026-10-19, and only the chip can say
+    /// whether that closes the chain -- the server-side check was jwt.decode.
+    ///
+    /// ActivateAsync hands the token over and swallows a rejection on purpose
+    /// (HandJwtToDongleAsync), so a 200 from the server proves nothing about the
+    /// chip. Here the token is handed over explicitly, after a tampered copy that
+    /// must be refused: a chip that accepted both would make "accepted" mean nothing.
+    /// </summary>
+    private static int ActivateBetaOnClone(CryptinDongle dongle)
+    {
+        if (_endpoint == LicenseClient.DefaultBaseUrl || _endpoint.Host != "redteam-license.lake8.dev")
+        {
+            Console.Error.WriteLine(
+                $"\n  FERMO. activate-beta-clone parla solo al clone, e l'endpoint e' {_endpoint}.\n" +
+                "  Imposta CRYPTIN_LICENSE_URL=https://redteam-license.lake8.dev");
+            return 6;
+        }
+
+        var before = dongle.GetLicenseStatus();
+        Console.WriteLine($"\n--- licenza beta dal clone ---\n  prima: valid={before.IsValid} " +
+                          $"exp={before.ExpiresAt:u} error={before.Error}");
+
+        string jwt;
+        using (var client = new LicenseClient(_endpoint))
+        {
+            try
+            {
+                var result = client.ActivateAsync(dongle, ActivateRequest.BetaSessionId, null,
+                    ActivateRequest.BetaSku).GetAwaiter().GetResult();
+                jwt = result.Jwt;
+                Console.WriteLine($"  ok   /api/activate: {result.Status}, expires_at {result.ExpiresAt:u}");
+                ReportLicenceId(jwt);
+            }
+            catch (LicenseApiException e)
+            {
+                Console.Error.WriteLine($"\n  FAIL {e.Message} (code {e.Code})");
+                return 6;
+            }
+        }
+
+        var parts = jwt.Split('.');
+        var header = System.Text.Encoding.UTF8.GetString(Base64UrlDecode(parts[0]));
+        var payload = System.Text.Encoding.UTF8.GetString(Base64UrlDecode(parts[1]));
+        Console.WriteLine($"  header:  {header}");
+        Console.WriteLine($"  payload: {payload}");
+
+        // Negative control: one character of the signature changed. The last
+        // character of an RS256 signature carries padding bits, so flip one in
+        // the middle where every bit is significant.
+        var sig = parts[2].ToCharArray();
+        var mid = sig.Length / 2;
+        sig[mid] = sig[mid] == 'A' ? 'B' : 'A';
+        var tampered = $"{parts[0]}.{parts[1]}.{new string(sig)}";
+        try
+        {
+            dongle.SetLicenseJwt(tampered);
+            Console.Error.WriteLine("\n  FAIL il chip ha ACCETTATO un token con la firma manomessa.");
+            return 1;
+        }
+        catch (LicenseRejectedException e)
+        {
+            Console.WriteLine($"  ok   token manomesso rifiutato dal chip: {e.Error}");
+        }
+
+        try
+        {
+            dongle.SetLicenseJwt(jwt);
+            Console.WriteLine("  ok   token del clone ACCETTATO dal chip (CMD_SET_LICENSE_JWT)");
+        }
+        catch (LicenseRejectedException e)
+        {
+            Console.Error.WriteLine($"\n  FAIL il chip rifiuta il token del clone: {e.Error}");
+            return 1;
+        }
+
+        var after = dongle.GetLicenseStatus();
+        Console.WriteLine($"  dopo:  valid={after.IsValid} exp={after.ExpiresAt:u} error={after.Error}");
+        return after.IsValid ? 0 : 1;
+    }
+
+    private static byte[] Base64UrlDecode(string s)
+    {
+        s = s.Replace('-', '+').Replace('_', '/');
+        return Convert.FromBase64String(s.PadRight(s.Length + (4 - s.Length % 4) % 4, '='));
+    }
+
     private static int Activate(CryptinDongle dongle, ActivationData? data)
     {
         var mode = data is null ? "A (anonima)" : "B (registrata)";

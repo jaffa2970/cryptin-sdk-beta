@@ -45,6 +45,10 @@ internal sealed class AppSettings
     /// when there is none. See <see cref="CheckoutResume"/>.</summary>
     public CheckoutResume? PendingCheckout { get; set; }
 
+    /// <summary>A move onto a new identity that has been started on the server
+    /// and not finished. Null when there is none. See <see cref="RekeyResume"/>.</summary>
+    public RekeyResume? PendingRekey { get; set; }
+
     /// <summary>
     /// True when it is time to offer a backup again. Asking on every launch is
     /// how a useful prompt becomes one people dismiss without reading.
@@ -61,6 +65,12 @@ internal sealed class AppSettings
     public void ClearPendingTransfer()
     {
         PendingTransfer = null;
+        Save();
+    }
+
+    public void ClearPendingRekey()
+    {
+        PendingRekey = null;
         Save();
     }
 
@@ -229,5 +239,42 @@ internal sealed class TransferResume
 
     /// <summary>When the chip was rebuilt, so the offer can say which transfer
     /// it means rather than asking about an unnamed one.</summary>
+    public DateTimeOffset StartedAt { get; set; }
+}
+
+/// <summary>
+/// A move onto a new identity (advisory G2) between its two halves. It lives
+/// across restarts twice over: the user decrypts their files between the halves,
+/// which can take days, and the reflash in the middle needs the same restart as
+/// every other wizard that rewrites a chip under the process.
+///
+/// **The ticket is a bearer secret**, the second value in this file worth
+/// something to a thief after <see cref="CheckoutResume.SessionId"/>, and for
+/// the same trade: whoever presents it with a chip of their own takes the
+/// licence (not the files — the licence). It is kept only until the ticket is
+/// spent or expires, it sits in the user's own profile, and the server allows
+/// one open ticket per licence for a few days. Losing it to a crash instead
+/// would strand the user between an erased identity and a licence still bound
+/// to it, which is the likelier harm.
+/// </summary>
+internal sealed class RekeyResume
+{
+    /// <summary>From <c>rekey/start</c>, presented once by <c>rekey/finish</c>.</summary>
+    public string Ticket { get; set; } = "";
+
+    /// <summary>When the server stops accepting it.</summary>
+    public DateTimeOffset TicketExpiresAt { get; set; }
+
+    /// <summary>The identity the licence is on before the reflash, hex. The last
+    /// step refuses a chip that still answers with it: that chip was never
+    /// reflashed, and finishing on it would ask the server to move the licence
+    /// onto the identity it is already on.</summary>
+    public string OldIdentityHex { get; set; } = "";
+
+    /// <summary>Set when the chip has been reflashed. Before it, resuming goes
+    /// back to the decrypt-then-program steps; after it, straight to the last.</summary>
+    public bool Reflashed { get; set; }
+
+    /// <summary>When the ticket was taken, so the offer can name it.</summary>
     public DateTimeOffset StartedAt { get; set; }
 }

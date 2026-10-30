@@ -267,6 +267,83 @@ public sealed record RecoveryResponse
     [JsonPropertyName("message")] public string? Message { get; init; }
 }
 
+/// <summary>
+/// Body of <c>POST /api/dongle/rekey/start</c> — the first half of moving a
+/// licence onto a <em>new identity</em> (advisory G2, 2026-10-30).
+///
+/// Signed by the dongle the licence is on <b>now</b>, before it is reflashed:
+/// the reflash erases the old K_identity and the old K_attestation together, so
+/// this is the last moment either can prove anything. Both are sent, and the
+/// server requires the attestation to be the licence's own — a seed alone, typed
+/// onto some other chip, is what <see cref="RecoveryRequest"/> is for.
+///
+/// Field names as in the licence server's report of 2026-10-30 (Tartufo
+/// 41afc3fd). Two of its rules shape the client: the yearly limit is checked
+/// here already, before anything is erased; and <c>/api/recovery</c> voids any
+/// open ticket of the licence, so a transfer makes a pending rekey worthless.
+/// </summary>
+public sealed record RekeyStartRequest
+{
+    [JsonPropertyName("challenge_id")] public required string ChallengeId { get; init; }
+    [JsonPropertyName("challenge_signature")] public required string ChallengeSignature { get; init; }
+    [JsonPropertyName("identity_pubkey")] public required string IdentityPubkey { get; init; }
+    [JsonPropertyName("attestation_pubkey")] public required string AttestationPubkey { get; init; }
+}
+
+public sealed record RekeyStartResponse
+{
+    /// <summary><c>ticket_issued</c>.</summary>
+    [JsonPropertyName("status")] public string? Status { get; init; }
+
+    /// <summary>
+    /// The bearer ticket that the second half presents. Returned once and
+    /// stored only hashed on the server, so losing it here means starting over
+    /// — which costs nothing, since the licence has not moved yet.
+    /// </summary>
+    [JsonPropertyName("ticket")] public required string Ticket { get; init; }
+
+    /// <summary>After this the ticket is refused. Long enough to decrypt what
+    /// is needed before the reflash: days, not minutes.</summary>
+    [JsonPropertyName("expires_at")] public required DateTimeOffset ExpiresAt { get; init; }
+}
+
+/// <summary>
+/// Body of <c>POST /api/dongle/rekey/finish</c> — the second half, signed by the
+/// <b>new</b> identity on the reflashed chip. The ticket is what ties it to the
+/// first half; nothing of the old identity survives to sign with.
+/// </summary>
+public sealed record RekeyFinishRequest
+{
+    [JsonPropertyName("ticket")] public required string Ticket { get; init; }
+    [JsonPropertyName("challenge_id")] public required string ChallengeId { get; init; }
+    [JsonPropertyName("challenge_signature")] public required string ChallengeSignature { get; init; }
+    [JsonPropertyName("new_identity_pubkey")] public required string NewIdentityPubkey { get; init; }
+    [JsonPropertyName("new_attestation_pubkey")] public required string NewAttestationPubkey { get; init; }
+}
+
+public sealed record RekeyFinishResponse
+{
+    [JsonPropertyName("status")] public required string Status { get; init; }
+    [JsonPropertyName("jwt")] public required string Jwt { get; init; }
+
+    /// <summary>Unchanged: a rekey moves the licence, it does not extend it.</summary>
+    [JsonPropertyName("expires_at")] public required DateTimeOffset ExpiresAt { get; init; }
+
+    /// <summary>Same meaning and same reasoning as
+    /// <see cref="RecoveryResponse.Expired"/>.</summary>
+    [JsonPropertyName("expired")] public bool Expired { get; init; }
+
+    /// <summary>
+    /// Registered backups the server dropped. They carry the old seed, so under
+    /// the new identity they would answer "not found" for good; the annual free
+    /// registration is available again. The app has to say so, because nothing
+    /// else will tell the user their backup stopped counting.
+    /// </summary>
+    [JsonPropertyName("backups_removed")] public int BackupsRemoved { get; init; }
+
+    [JsonPropertyName("message")] public string? Message { get; init; }
+}
+
 /// <summary>How a licence stands. Distinct from an error: these are answers.</summary>
 public enum LicenseState
 {

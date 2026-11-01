@@ -30,9 +30,11 @@ namespace CryptinSDK.Updater;
 /// it — 0 for Success, non-zero otherwise — so a caller that cannot parse still
 /// learns whether it worked.
 ///
-/// One argument beyond <c>--port</c>: <c>--force</c>, which suppresses the
-/// not-blank refusal. Without it the updater probes the chip's nvs partition
-/// first and answers <c>AlreadyProvisioned</c> having written nothing.
+/// Two commands: <c>first-flash</c> and <c>update-app</c> (see
+/// <see cref="UpdateAppAsync"/>). One argument beyond <c>--port</c>:
+/// <c>--force</c>, first-flash only, which suppresses the not-blank refusal.
+/// Without it the updater probes the chip's nvs partition first and answers
+/// <c>AlreadyProvisioned</c> having written nothing.
 ///
 /// The `error` line carries text meant for a person and does not decide the
 /// outcome; `done` does. Keeping them apart means the updater can explain a
@@ -52,8 +54,26 @@ public sealed class UpdaterProcess : IUpdater
 
     public bool IsInstalled => File.Exists(_executablePath);
 
-    public async Task<FlashResult> FirstFlashAsync(string portName, IProgress<int>? progress = null,
-                                                   bool force = false)
+    public Task<FlashResult> FirstFlashAsync(string portName, IProgress<int>? progress = null,
+                                             bool force = false)
+        => RunAsync("first-flash", portName, progress, force);
+
+    /// <summary>
+    /// Updates the firmware of a dongle that is already set up, without touching
+    /// its keys: the updater writes from 0xE000 on (otadata and the application)
+    /// and leaves nvs alone, so seed, PIN, K_attestation and the licence token
+    /// stay. It refuses, having written nothing, unless the chip's partition
+    /// table matches the image's and the chip already is a dongle.
+    ///
+    /// Not on <see cref="IUpdater"/>: it exists only for -dev beta chips, which
+    /// the ROM downloader still accepts. A burned chip has no such path, and an
+    /// interface method would promise one.
+    /// </summary>
+    public Task<FlashResult> UpdateAppAsync(string portName, IProgress<int>? progress = null)
+        => RunAsync("update-app", portName, progress, force: false);
+
+    private async Task<FlashResult> RunAsync(string verb, string portName, IProgress<int>? progress,
+                                             bool force)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(portName);
 
@@ -71,7 +91,7 @@ public sealed class UpdaterProcess : IUpdater
             UseShellExecute = false,
             CreateNoWindow = true,
         };
-        startInfo.ArgumentList.Add("first-flash");
+        startInfo.ArgumentList.Add(verb);
         startInfo.ArgumentList.Add("--port");
         startInfo.ArgumentList.Add(portName);
         if (force) startInfo.ArgumentList.Add("--force");

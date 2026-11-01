@@ -363,9 +363,9 @@ internal sealed class SetupWizard : Form
             "recovery seed and the identity the license server knows it by. The 24 words cannot " +
             "bring that identity back, and the license stays with the old one.\n\n" +
             "Updating the firmware of a dongle you already use? Answer No, close this wizard and " +
-            "use Transfer license in the main window, with your 24 words at hand: it writes the " +
-            "new firmware, puts your words back and moves your license. Done from here, the " +
-            "dongle comes back with NEW words and no license.\n\n" +
+            "use Update firmware in the main window: it writes the new firmware and keeps your " +
+            "words, PIN and license. Done from here, the dongle comes back with NEW words and no " +
+            "license.\n\n" +
             "If it is a new chip that simply came with the manufacturer's firmware, there is " +
             "nothing to lose.\n\n" +
             "Program it anyway?",

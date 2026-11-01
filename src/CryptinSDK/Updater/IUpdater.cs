@@ -7,8 +7,10 @@ namespace CryptinSDK.Updater;
 /// interface is this small on purpose: one that promised methods nobody will
 /// implement would be worse than one that promises little.
 ///
-/// **There is no update path**, and adding one here would be pretending. A
-/// production dongle is in Secure Download Mode and refuses <c>write-flash</c> —
+/// **There is no update path here**, and adding one would be pretending. (The
+/// -dev beta has one, <see cref="UpdaterProcess.UpdateAppAsync"/>, kept off this
+/// interface for exactly this reason: it works only because the chip is not
+/// burned.) A production dongle is in Secure Download Mode and refuses <c>write-flash</c> —
 /// not from us, not from the user, not from an attacker holding it. Updating the
 /// firmware of a burned chip needs a channel that does not go through the ROM
 /// downloader, and that channel does not exist yet.

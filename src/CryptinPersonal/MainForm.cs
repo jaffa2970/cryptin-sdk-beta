@@ -572,7 +572,7 @@ internal sealed class MainForm : Form
         _firmware.Font = muted;
         _firmware.ForeColor = SystemColors.GrayText;
         _firmware.FlatStyle = FlatStyle.Flat;
-        _firmware.Enabled = false;
+        _firmware.Click += (_, _) => UpdateFirmware();
 
         // The G2 cure (2026-10-30). Same quiet row: most people never need it,
         // and the advisory is what sends the ones who do.
@@ -605,9 +605,9 @@ internal sealed class MainForm : Form
             "being authorized. For a second dongle beside a working first one,\n" +
             "use Backup dongle instead.");
         tips.SetToolTip(_firmware,
-            "No firmware update path exists in the beta.\n" +
-            "Flashing needs the second cable on the UART socket, and a production\n" +
-            "dongle refuses write-flash altogether — Secure Download Mode.");
+            "Writes new firmware and keeps your 24 words, PIN and license.\n" +
+            "Needs the second cable on the UART socket. Beta dongles only:\n" +
+            "a production dongle refuses write-flash — Secure Download Mode.");
 
         Controls.AddRange([_enterPin, _lock, _activate, _loadLicence, _backup, _transfer, _firmware, _newIdentity]);
     }
@@ -702,7 +702,9 @@ internal sealed class MainForm : Form
         _backup.Enabled = unlocked;
         // Not `unlocked`, unlike every other button here. See where it is built.
         _transfer.Enabled = !busy;
-        _firmware.Enabled = false;          // no update path in the beta, ever
+        // No PIN needed: it changes no key, and on a -dev chip anyone holding it
+        // can write firmware with esptool anyway. The updater's own guards decide.
+        _firmware.Enabled = !busy;
         // Starting needs the dongle unlocked (it signs the first half); a move
         // already under way does not, since its dongle may be mid-reflash.
         _newIdentity.Enabled = !busy && (unlocked || _settings.PendingRekey is not null);
@@ -892,7 +894,8 @@ internal sealed class MainForm : Form
                 "encrypted with your seed, but it cannot encrypt anything new.\n\n" +
                 "It is for a dongle that is broken, lost or stolen. If yours still works and you " +
                 "want a spare beside it, close this and use Backup dongle instead — that one " +
-                "keeps both.\n\n" +
+                "keeps both. To put new firmware on the same dongle, use Update firmware: no " +
+                "transfer is spent.\n\n" +
                 "You will need your 24 words and a chip to put them on.\n\n" +
                 "Go on?",
                 "Transfer the license", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
@@ -934,15 +937,60 @@ internal sealed class MainForm : Form
     }
 
     /// <summary>Shared by the Transfer button and the resume offer. The wizard
-    /// reprograms and reconnects chips, so no session survives it either.</summary>
+    /// reprograms and reconnects chips; when its last step unlocked the chip in
+    /// the socket, that session is kept rather than asking for the PIN again.</summary>
     private void RunTransferWizard(bool resume)
     {
+        bool kept;
         using (Foreground())
         {
             using var wizard = new LicenseTransferWizard(_dongle, _settings, resume);
             wizard.ShowDialog(this);
+            kept = wizard.SessionKept;
         }
 
+        if (kept)
+        {
+            // The chip may be a different one from the dongle this window had:
+            // without this the next poll reads a change of serial and locks it.
+            _connectedSerial = _dongle.UsbSerial;
+            SetState(DongleState.Unlocked);
+            _licenceRefresh = RefreshLicenceAsync();
+            return;
+        }
+
+        _connectedSerial = "";
+        SetState(DongleState.Disconnected);
+        PollDongle();
+    }
+
+    // --- updating the firmware in place ------------------------------------
+
+    /// <summary>
+    /// Writes new firmware over the dongle and keeps its keys (2026-10-31). The
+    /// chip is reset under this process, so as after a transfer no session
+    /// survives, and the device has to be reopened by a new process.
+    /// </summary>
+    private void UpdateFirmware()
+    {
+        if (_busy) return;
+
+        if (FirmwareUpdateForm.RestartRequired)
+        {
+            MessageBox.Show(this, FirmwareUpdateForm.RestartMessage,
+                "Update firmware — one restart left", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        bool written;
+        using (Foreground())
+        {
+            using var form = new FirmwareUpdateForm();
+            written = form.ShowDialog(this) == DialogResult.OK;
+        }
+        if (!written) return;
+
+        _dongle.Disconnect();
         _connectedSerial = "";
         SetState(DongleState.Disconnected);
         PollDongle();

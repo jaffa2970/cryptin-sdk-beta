@@ -63,6 +63,19 @@ internal static class Program
     private const int NvsOffset = 0x9000;
     private const int NvsSize = 0x5000;
 
+    /// <summary>The partition table, same source. Read back from the chip by
+    /// <c>update-app</c> and compared with the image's own.</summary>
+    private const int PartitionTableOffset = 0x8000;
+    private const int PartitionTableSize = 0x1000;
+
+    /// <summary>
+    /// Where <c>update-app</c> starts writing: otadata (0xE000), then app0
+    /// (0x10000) and whatever the image carries after it. Everything below --
+    /// bootloader, partition table, nvs -- stays as it is on the chip. nvs ends
+    /// at 0xE000, which is the whole point of the number.
+    /// </summary>
+    private const int AppRegionOffset = 0xE000;
+
     /// <summary>
     /// The image this build is meant to write, by content rather than by name.
     ///
@@ -80,8 +93,9 @@ internal static class Program
     /// </summary>
     private const string BundledImageSha256 =
         // SHA-256 of a published artefact, not key material.
-        // Format v2 firmware (90d0cd9: v2 + L1/L2/L3 fixes), 2026-10-10.
-        "f66a17cd7a03a13fa11e1e98babfface423d00e69114d1ae8b25526f9e94df9d";  // cryptin-secret-ok
+        // 2e1bbef (on-chip New identity, CMD_REKEY 0x11/0x12), built 2026-10-31,
+        // seen on γ and β; replaces 90d0cd9 (f66a17cd…), archived in dist/firmware-archive.
+        "b33bb3976b2a8a5e2a9118938a96dc8f2439c1498204756fac5c9f0b54a25f7a";  // cryptin-secret-ok
 
     /// <summary>Beside the executable, which is where the package puts it.</summary>
     private static string BundledImagePath =>
@@ -89,6 +103,14 @@ internal static class Program
 
     private static int Main(string[] args)
     {
+        // The verb. It used to be decorative -- the parent always sent
+        // first-flash and nothing read it -- so a missing one still means that.
+        var verb = args.Length > 0 && !args[0].StartsWith("--", StringComparison.Ordinal)
+            ? args[0]
+            : "first-flash";
+        if (verb is not ("first-flash" or "update-app"))
+            return Fail($"unknown command '{verb}': expected first-flash or update-app");
+
         var port = Argument(args, "--port");
 
         // IUpdater.FirstFlashAsync takes a port and nothing else, because the
@@ -107,7 +129,11 @@ internal static class Program
         {
             Console.Error.WriteLine(
                 "CryptinUpdater (build di test, nessuna verifica di firma)\n\n" +
-                "  CryptinUpdater first-flash --port COM5 [--image <firmware.factory.bin>]\n\n" +
+                "  CryptinUpdater first-flash --port COM5 [--image <firmware.factory.bin>]\n" +
+                "  CryptinUpdater update-app  --port COM5 [--image <firmware.factory.bin>]\n\n" +
+                "update-app scrive solo da 0xE000 in poi (otadata e applicazione): la nvs con\n" +
+                "seme, PIN e K_attestation resta. Solo su un dongle -dev gia' configurato e con\n" +
+                "la stessa tabella delle partizioni dell'immagine; altrimenti non scrive nulla.\n\n" +
                 "Senza --image usa firmware/firmware.factory.bin accanto all'eseguibile,\n" +
                 "che e' dove lo mette il pacchetto, e ne verifica lo SHA-256 fissato.\n\n" +
                 "L'immagine dev'essere quella UNITA prodotta dal build, di solito\n" +
@@ -133,13 +159,117 @@ internal static class Program
 
         if (Reject(image) is { } problem) return Fail(problem);
 
+        if (verb == "update-app") return UpdateApp(port, image);
+
         // Last, because it is the only check that costs a round trip to the chip,
         // and because there is no point asking the hardware about an image we
         // have already refused.
         if (!args.Contains("--force") && NotBlank(port) is { } occupied)
             return Refuse(occupied);
 
-        return Flash(port, image);
+        return Flash(port, image, 0);
+    }
+
+    /// <summary>
+    /// Updates the firmware of a dongle that is already set up, keeping it the
+    /// same dongle (decided 2026-10-31).
+    ///
+    /// first-flash writes the merged image from 0x0, and its 0xFF padding over
+    /// nvs wipes the seed and K_attestation -- which is why updating used to mean
+    /// a Transfer, and a transfer spent. Writing only from 0xE000 leaves nvs where
+    /// it is: same seed, same PIN, same K_attestation, same token, so the licence
+    /// does not move and the server is never asked.
+    ///
+    /// Two guards, both read from the chip, and nothing is written unless both pass:
+    ///
+    /// **The partition table must match the image's, byte for byte.** Writing an
+    /// app over a layout it was not built for is how a chip ends up booting into
+    /// nothing. It is also the -dev check: under flash encryption the table reads
+    /// back as ciphertext and cannot match -- and an encrypted chip must never
+    /// get plaintext written to it.
+    ///
+    /// **nvs must carry the "cryptin" namespace.** A chip that is not a dongle yet
+    /// has nothing to keep, and the right command for it is first-flash, which
+    /// also provisions it.
+    /// </summary>
+    private static int UpdateApp(string port, string image)
+    {
+        var bytes = File.ReadAllBytes(image);
+        if (bytes.Length <= AppRegionOffset)
+            return Fail("the image is too short to carry an application.");
+
+        var table = ReadFlash(port, PartitionTableOffset, PartitionTableSize);
+        if (table is null)
+            return Fail($"could not read the chip on {port}: nothing was written. Is the cable on " +
+                        "the socket marked UART?");
+
+        if (!table.AsSpan().SequenceEqual(bytes.AsSpan(PartitionTableOffset, PartitionTableSize)))
+            return Fail("Nothing was written: the chip's partition table is not the one this " +
+                        "firmware was built for, or the chip's flash is encrypted. Updating in " +
+                        "place is only for a beta dongle with the same layout.");
+
+        var nvs = ReadFlash(port, NvsOffset, NvsSize);
+        if (nvs is null)
+            return Fail($"could not read the chip on {port}: nothing was written.");
+        if (!Encoding.ASCII.GetString(nvs).Contains("cryptin", StringComparison.Ordinal))
+            return Fail("Nothing was written: this chip is not a Crypt-in dongle yet, so there is " +
+                        "nothing to keep. Set it up from the start instead.");
+
+        var region = Path.Combine(Path.GetTempPath(), $"cryptin-app-{Guid.NewGuid():N}.bin");
+        try
+        {
+            File.WriteAllBytes(region, bytes[AppRegionOffset..]);
+            return Flash(port, region, AppRegionOffset);
+        }
+        finally
+        {
+            try { File.Delete(region); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>Reads a region of the chip's flash, or null when it cannot -- an
+    /// unreadable chip is not evidence of anything, so every caller decides
+    /// what "could not tell" means for itself.</summary>
+    private static byte[]? ReadFlash(string port, int offset, int size)
+    {
+        var dump = Path.Combine(Path.GetTempPath(), $"cryptin-read-{Guid.NewGuid():N}.bin");
+        try
+        {
+            var startInfo = Esptool();
+            foreach (var argument in new[]
+                     {
+                         "--chip", Chip,
+                         "--port", port,
+                         "--baud", Baud,
+                         "read-flash",
+                         $"0x{offset:X}", $"0x{size:X}", dump,
+                     })
+                startInfo.ArgumentList.Add(argument);
+
+            using var process = Process.Start(startInfo);
+            if (process is null) return null;
+
+            process.StandardOutput.ReadToEnd();
+            process.StandardError.ReadToEnd();
+            process.WaitForExit();
+
+            if (process.ExitCode != 0 || !File.Exists(dump)) return null;
+
+            var data = File.ReadAllBytes(dump);
+            return data.Length == size ? data : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException
+                                     or InvalidOperationException
+                                     or System.ComponentModel.Win32Exception)
+        {
+            return null;
+        }
+        finally
+        {
+            try { File.Delete(dump); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
     }
 
     /// <summary>
@@ -263,58 +393,24 @@ internal static class Program
     /// </summary>
     private static string? NotBlank(string port)
     {
-        var dump = Path.Combine(Path.GetTempPath(), $"cryptin-nvs-{Guid.NewGuid():N}.bin");
-        try
-        {
-            var startInfo = Esptool();
-            foreach (var argument in new[]
-                     {
-                         "--chip", Chip,
-                         "--port", port,
-                         "--baud", Baud,
-                         "read-flash",
-                         $"0x{NvsOffset:X}", $"0x{NvsSize:X}", dump,
-                     })
-                startInfo.ArgumentList.Add(argument);
+        var nvs = ReadFlash(port, NvsOffset, NvsSize);
+        if (nvs is null || Array.TrueForAll(nvs, b => b == 0xFF)) return null;
 
-            using var process = Process.Start(startInfo);
-            if (process is null) return null;
-
-            process.StandardOutput.ReadToEnd();
-            process.StandardError.ReadToEnd();
-            process.WaitForExit();
-
-            if (process.ExitCode != 0 || !File.Exists(dump)) return null;
-
-            var nvs = File.ReadAllBytes(dump);
-            if (nvs.Length != NvsSize || Array.TrueForAll(nvs, b => b == 0xFF)) return null;
-
-            return Encoding.ASCII.GetString(nvs).Contains("cryptin", StringComparison.Ordinal)
-                // English, like everything else the user reads. It was written in
-                // Italian and stayed that way until a tester met it on 2026-09-02:
-                // the one message in the product that only the author could read,
-                // and it appears at the moment a chip is about to be overwritten.
-                ? "this chip is ALREADY a Crypt-in dongle: its nvs carries the "
-                  + "\"cryptin\" namespace. Rewriting it erases the seed, file_secret, "
-                  + "the PIN attempt counter and K_attestation -- and the 24 words do "
-                  + "NOT bring K_attestation back, so the dongle loses the identity the "
-                  + "license server knows it by. Updating the firmware? Do not add --force: "
-                  + "use Transfer license in Crypt-in Personal, which writes the new firmware "
-                  + "and keeps your 24 words and your license."
-                : "this chip's nvs is not blank, but it does not carry the \"cryptin\" "
-                  + "namespace: in all likelihood it is the manufacturer's factory "
-                  + "firmware, and overwriting it costs nothing.";
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException
-                                     or InvalidOperationException)
-        {
-            return null;
-        }
-        finally
-        {
-            try { File.Delete(dump); }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
-        }
+        return Encoding.ASCII.GetString(nvs).Contains("cryptin", StringComparison.Ordinal)
+            // English, like everything else the user reads. It was written in
+            // Italian and stayed that way until a tester met it on 2026-09-02:
+            // the one message in the product that only the author could read,
+            // and it appears at the moment a chip is about to be overwritten.
+            ? "this chip is ALREADY a Crypt-in dongle: its nvs carries the "
+              + "\"cryptin\" namespace. Rewriting it erases the seed, file_secret, "
+              + "the PIN attempt counter and K_attestation -- and the 24 words do "
+              + "NOT bring K_attestation back, so the dongle loses the identity the "
+              + "license server knows it by. Updating the firmware? Do not add --force: "
+              + "use Update firmware in Crypt-in Personal (or the update-app command), "
+              + "which keeps the seed, the PIN and the license where they are."
+            : "this chip's nvs is not blank, but it does not carry the \"cryptin\" "
+              + "namespace: in all likelihood it is the manufacturer's factory "
+              + "firmware, and overwriting it costs nothing.";
     }
 
     /// <summary>
@@ -369,7 +465,7 @@ internal static class Program
         return startInfo;
     }
 
-    private static int Flash(string port, string image)
+    private static int Flash(string port, string image, int offset)
     {
         var startInfo = Esptool();
         foreach (var argument in new[]
@@ -379,7 +475,7 @@ internal static class Program
                      "--baud", Baud,
                      "write-flash",
                      "--flash-size", FlashSize,
-                     "0x0", image,
+                     $"0x{offset:X}", image,
                  })
             startInfo.ArgumentList.Add(argument);
 

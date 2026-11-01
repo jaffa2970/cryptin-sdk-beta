@@ -73,8 +73,10 @@ Linux needs a udev rule to reach the dongle without root:
 
 ### The firmware image is not included
 
-The **Program** button of `CryptinPersonal` and `CryptinUpdater` write a
-firmware image to the dongle, and this repository does not contain one. Take
+The **Program** and **Update firmware** buttons of `CryptinPersonal`, and
+`CryptinUpdater` (`first-flash` writes the whole image at `0x0`; `update-app`
+writes only from `0xE000`, so the `nvs` partition and the keys in it stay),
+write a firmware image to the dongle, and this repository does not contain one. Take
 `firmware/firmware.factory.bin` from the beta package and put it in a
 `firmware/` folder beside the executable, or pass it with `--image`.
 `CryptinUpdater` knows the SHA-256 of the image it was built for
@@ -85,7 +87,9 @@ wherever it sits.
 
 It writes the image it is given and **verifies no signature**: it is the
 reference implementation of the updater contract, meant for a development
-dongle on a bench. The header of `src/CryptinUpdater/Program.cs` says what the
+dongle on a bench. `update-app` exists only because a `-dev` beta unit has no
+flash encryption and no Secure Download Mode: it is not OTA, and a production
+dongle refuses it. The header of `src/CryptinUpdater/Program.cs` says what the
 production updater verifies before flashing.
 
 ## Running the tests

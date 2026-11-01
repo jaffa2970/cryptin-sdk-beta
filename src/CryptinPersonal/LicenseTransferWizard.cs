@@ -105,6 +105,14 @@ internal sealed class LicenseTransferWizard : Form
 
     private bool _seedLoaded;
 
+    /// <summary>Set when the last step unlocked the caller's handle with the PIN.</summary>
+    private bool _unlocked;
+
+    /// <summary>The caller's handle came through unlocked, so the main window can
+    /// stay unlocked instead of asking for the PIN a second time (seen on γ,
+    /// 2026-10-31). Same idea as <see cref="NewIdentityWizard.SessionKept"/>.</summary>
+    internal bool SessionKept => _unlocked && _dongle.IsConnected;
+
     /// <param name="resume">True to pick up the chip recorded in
     /// <see cref="AppSettings.PendingTransfer"/> at the last step. False always
     /// starts at step 1 — the only way to abandon a chip that turned out to be
@@ -615,8 +623,9 @@ internal sealed class LicenseTransferWizard : Form
             "If it has been a dongle before, programming it destroys its recovery seed and the " +
             "identity the license server knows it by. Your 24 words rebuild YOUR identity on it, " +
             "not that one, and any license that chip held stays where it is.\n\n" +
-            "Updating the firmware of this same dongle? Then Yes is the right answer: the next " +
-            "steps put your 24 words back on it and move your license onto it.\n\n" +
+            "Only updating the firmware of this same dongle? Then No: close this and use Update " +
+            "firmware in the main window, which keeps your words and license and spends no " +
+            "transfer.\n\n" +
             "If it is a new chip that simply came with the manufacturer's firmware, there is " +
             "nothing to lose.\n\n" +
             "Program it anyway?",
@@ -810,6 +819,7 @@ internal sealed class LicenseTransferWizard : Form
 
         using var pin = new PinForm(_dongle, _dongle.UsbSerial);
         if (pin.ShowDialog(this) != DialogResult.OK) return false;
+        _unlocked = true;
 
         byte[] identity;
         try

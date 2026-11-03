@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 lake8.dev
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using CryptinSDK.Crypto;
@@ -310,7 +311,14 @@ internal static class Program
             // way. Reporting "no licence" for firmware that has no such concept
             // would be alarming and wrong.
             if (status.Error == DongleLicenseError.Unsupported) return "not reported by this firmware";
-            if (status.IsValid) return "valid";
+            // The date is what tells a beta licence from a production one, and
+            // until 2026-11-03 the only way to read it was check_license_expiry.py.
+            // "valid" stays the first word so a script matching on it still works;
+            // the format is fixed, not the machine's culture.
+            if (status.IsValid)
+                return status.ExpiresAt is { } expires
+                    ? $"valid until {expires.ToString("yyyy-MM-dd HH':'mm", CultureInfo.InvariantCulture)} UTC"
+                    : "valid";
 
             return status.Error switch
             {

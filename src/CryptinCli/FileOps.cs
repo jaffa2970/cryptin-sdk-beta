@@ -108,14 +108,39 @@ internal static class FileOps
 
         if (!content.IsFolder)
         {
-            File.WriteAllBytes(target, content.Plaintext);
+            WritePrivate(target, content.Plaintext);
             return target;
         }
 
-        Directory.CreateDirectory(target);
+        // The folder itself is 0700, which is what keeps everything inside it
+        // private: the extracted files take whatever mode the zip or the umask
+        // gives them, but nobody else can traverse to them.
+        if (OperatingSystem.IsWindows())
+            Directory.CreateDirectory(target);
+        else
+            Directory.CreateDirectory(target, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         using var archive = new ZipArchive(new MemoryStream(content.Plaintext), ZipArchiveMode.Read);
         archive.ExtractToDirectory(target);
         return target;
+    }
+
+    /// <summary>
+    /// Writes a plaintext readable by its owner only (0600) on Linux and macOS.
+    /// File.WriteAllBytes would follow the umask — 664 on a stock Ubuntu desktop
+    /// — and hand a file that was private while encrypted to every other user of
+    /// the machine. The mode is set at creation, not chmod'ed afterwards, so
+    /// there is no instant in which the file is readable by others. On Windows
+    /// the file inherits its folder's ACL, as it does from the app.
+    /// One Write call, like WriteAllBytes: an interruption still cannot leave a
+    /// half-written file behind except during the write itself.
+    /// </summary>
+    private static void WritePrivate(string path, byte[] bytes)
+    {
+        var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write };
+        if (!OperatingSystem.IsWindows())
+            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        using var stream = new FileStream(path, options);
+        stream.Write(bytes);
     }
 
     /// <summary>Never overwrite. A command is one gesture and an overwrite is not

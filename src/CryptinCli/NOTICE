@@ -27,5 +27,19 @@ System.IO.Ports (https://www.nuget.org/packages/System.IO.Ports/)
     Copyright (c) .NET Foundation and Contributors
     MIT License
 
+The standard BIP-39 English wordlist, compiled into CryptinSDK
+    from https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt
+    (SHA-256 2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda).
+
 A self-contained publish also includes the .NET runtime (MIT License,
 Copyright (c) .NET Foundation and Contributors).
+
+LICENCE TEXTS IN A PUBLISHED ARCHIVE
+
+LICENSE beside this file is the Apache License 2.0, which covers this tool,
+CryptinSDK and HidSharp alike. The MIT components -- the .NET runtime and
+System.IO.Ports -- are covered by the runtime's own licence and third-party
+notices, shipped in licenses/ next to the binary:
+
+    licenses/dotnet-runtime-LICENSE.TXT
+    licenses/dotnet-runtime-THIRD-PARTY-NOTICES.TXT

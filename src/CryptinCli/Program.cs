@@ -81,6 +81,7 @@ internal static class Program
         {
             "status" => await StatusAsync(),
             "unlock" => Unlock(),
+            "activate" => await Activation.RunAsync(args, ConnectWaitMs, ct),
             "reset" => Reset(args),
             "recover" => Recover(args),
             "encrypt" => Transform(args, encrypting: true, ct),
@@ -288,7 +289,7 @@ internal static class Program
     /// a cached bool — is what let the desktop app sail past an auto-lock. The
     /// dongle is the only thing that knows, so it gets asked.
     /// </summary>
-    private static bool IsUnlocked(CryptinDongle dongle)
+    internal static bool IsUnlocked(CryptinDongle dongle)
     {
         try
         {
@@ -490,6 +491,16 @@ internal static class Program
             {
                 Err($"{candidate}: {e.Message}, skipped");
             }
+            // A port that cannot be configured is one more port that is not a
+            // wedged dongle, so it is skipped like the others. On Linux a
+            // /dev/ttyS* node with no UART behind it throws this
+            // ("Value does not fall within the expected range"): measured on
+            // 2026-11-04 in the Ubuntu VM, where it ended the search on ttyS1
+            // with exit 11 before the remaining ports were tried.
+            catch (ArgumentException e)
+            {
+                Err($"{candidate}: {e.Message}, skipped");
+            }
         }
 
         return Fail("no dongle answered on any port — if it is plugged in, unplug and "
@@ -497,9 +508,9 @@ internal static class Program
                     ExitCode.NoDongle);
     }
 
-    private static void Err(string message) => Console.Error.WriteLine($"cryptin: {message}");
+    internal static void Err(string message) => Console.Error.WriteLine($"cryptin: {message}");
 
-    private static ExitCode Fail(string message, ExitCode code, bool withUsage = false)
+    internal static ExitCode Fail(string message, ExitCode code, bool withUsage = false)
     {
         Err(message);
         if (withUsage) Usage(Console.Error);
@@ -559,6 +570,9 @@ internal static class Program
         USAGE
           cryptin status              what is attached, and whether it is unlocked
           cryptin unlock              verify the PIN (read from stdin)
+          cryptin activate [--replace]  activate the beta license on the dongle
+                                      (anonymous; the dongle must be unlocked;
+                                      a valid license is kept unless --replace)
           cryptin encrypt <path>      encrypt a file or folder to <path>.crin
           cryptin decrypt <path>      decrypt a .crin or .cryptin back
           cryptin open-offline <file> decrypt with the 24 recovery words, no dongle
@@ -610,6 +624,8 @@ internal static class Program
           4  PIN required      10  file over the transfer limit
           5  dongle locked out 11  dongle error
           6  no license        12  filesystem error
+                               13  license server refused
+                               14  license server unreachable
                               130  interrupted
 
         https://cryptin.lake8.dev

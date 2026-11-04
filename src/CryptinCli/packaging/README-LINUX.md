@@ -3,11 +3,23 @@
 A command-line client for the Crypt-in hardware dongle, built for x86-64 Linux.
 One self-contained file: no .NET runtime to install.
 
-## Read this first: activate on Windows
+## Read this first: set up on Windows, activate here or there
 
-**The licence is activated from Windows, with the CryptinPersonal app.** This
-Linux build has no `activate` command. The dongle has to arrive here already
-set up and activated.
+**The dongle is set up from Windows, with the CryptinPersonal app**: flashing
+the firmware and handing over your 24 words and PIN happen there. This Linux
+build cannot do either.
+
+**The beta licence can then be activated from here**, if the app did not
+already do it:
+
+```bash
+cryptin unlock          # the PIN, from the terminal or stdin
+cryptin activate        # anonymous beta licence, written to the dongle
+```
+
+`activate` keeps a licence the dongle already holds, and says so; `--replace`
+activates anyway. Exit code 13 means the licence server refused (it says why),
+14 that it could not be reached.
 
 - **Encrypting** needs an active licence on the dongle.
 - **Decrypting never asks for a licence**: any `.crin` your dongle wrote can
@@ -79,6 +91,8 @@ cryptin open-offline report.pdf.crin < words.txt   # no dongle: the 24 recovery 
 | 4 | PIN required | 10 | over the transfer limit |
 | 5 | dongle locked out | 11 | dongle error |
 | 6 | no licence | 12 | filesystem error |
+| | | 13 | licence server refused (`activate`) |
+| | | 14 | licence server unreachable (`activate`) |
 | | | 130 | interrupted (nothing is written) |
 
 ## If `status` says no dongle
@@ -89,3 +103,8 @@ cryptin open-offline report.pdf.crin < words.txt   # no dongle: the 24 recovery 
    decline, unplug and replug.
 3. Check `ls -l /dev/hidraw*`: the dongle's node should belong to group
    `plugdev` with mode `crw-rw----`.
+4. If `lsusb` shows the dongle as `303a:1001` (*USB JTAG/serial debug unit*)
+   and replugging does not help, run `cryptin recover`: it reboots the chip
+   into its application and the dongle comes back locked. Your user needs the
+   `dialout` group for this one (`sudo usermod -aG dialout "$USER"`), and
+   `--port /dev/ttyACM0` names the port if the search does not find it.

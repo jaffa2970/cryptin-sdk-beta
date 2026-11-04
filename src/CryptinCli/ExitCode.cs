@@ -53,6 +53,13 @@ internal enum ExitCode
     /// <summary>Filesystem trouble: permissions, missing directory, full disk.</summary>
     IoError = 12,
 
+    /// <summary>`activate`: the licence server answered with a refusal (already
+    /// activated, beta full, revoked, retired seed…). Retrying rarely helps.</summary>
+    ServerRefused = 13,
+
+    /// <summary>`activate`: the licence server could not be reached. Retrying may.</summary>
+    ServerUnreachable = 14,
+
     /// <summary>Interrupted with Ctrl-C. Nothing was written.</summary>
     Cancelled = 130,
 }

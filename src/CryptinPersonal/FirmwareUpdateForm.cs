@@ -171,11 +171,23 @@ internal sealed class FirmwareUpdateForm : Form
 
             if (result != FlashResult.Success)
             {
-                MessageBox.Show(this, result switch
+                // Seen on γ, 2026-11-04: a write cut half-way (cable pulled, process
+                // killed) leaves the dongle with no application -- it does not start
+                // and shows no dongle interface until Update completes. The keys are
+                // not touched (nothing is written below 0xE000). "Not updated" alone
+                // reads as "nothing happened", and a dongle that then vanishes reads
+                // as a broken one. Say both halves.
+                var what = result switch
                 {
                     FlashResult.PortNotFound => $"{port.PortName} is not responding: {updater.LastError}",
                     _ => $"The firmware was not updated. {updater.LastError}",
-                }, "Update firmware", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                };
+                MessageBox.Show(this,
+                    what.TrimEnd() + "\n\n" +
+                    "If this stopped during the write, the dongle will not start until an update " +
+                    "completes. Your 24 words, your PIN and your license are not touched: check the " +
+                    "UART cable and press Update again.",
+                    "Update firmware", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 

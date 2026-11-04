@@ -6,14 +6,23 @@
 > §3; il rapporto completo è in Tartufo (progetto `cryptin`, argomento «CLI e SDK su Linux»).
 > Il pomeriggio dello stesso giorno: casi 20-21 (`.crin` scambiati con Windows nei due versi) ✅, e
 > `reset` eseguito col ponte CH343 nella VM, anche col **solo** binario di distribuzione ✅.
+> **Pubblicata il 2026-11-03** nella release
+> [`cli-linux-2026-11-03`](https://github.com/jaffa2970/Crypt-in-BETA/releases/tag/cli-linux-2026-11-03)
+> di Crypt-in-BETA, separata e **non Latest**: tar `37bd4de3…05b8` (binario `77ad14c7…f0e9`, da `551e75b`),
+> SBOM `cd009ff8…58fa`, `SHA256SUMS-cli-linux-2026-11-03.txt`.
 > Le misure precedenti (α, firmware e formato v1) sono del 5-6/08 e stanno in `STATO_LAVORI.md` §8.
 
 Linux è **la piattaforma per cui questa CLI esiste**: è il deliverable del 30
 settembre ed è il motivo per cui `CryptinSDK` è stata rilicenziata Apache-2.0.
 
-⚠️ **Su Linux non c'è `activate`.** Il dongle arriva già attivato da Windows
-(CryptinPersonal). La decifratura non chiede mai licenza; la cifratura sì.
-Il `README-LINUX.md` accanto a questo file, per il tester, lo dice in testa.
+⚠️ **`activate` (dal 04/11, non ancora in un pacchetto pubblicato).** Il pacchetto `cli-linux-2026-11-03` non
+ce l'ha: lì il dongle arriva già attivato da Windows. Il codice nuovo (`Activation.cs`) fa l'attivazione beta
+anonima come l'app, e senza `--replace` tiene una licenza valida già sul chip. ✅ Visto su Windows contro il clone il 04/11: i rifiuti (bloccato, già licenziato, `ALREADY_ACTIVATED` → exit 13)
+e **un'attivazione riuscita** su γ (exit 0, token sul chip, poi cifra e decifra). ✅ **Su Linux il 04/11** (§3, casi
+A1-A6, build RedTeam di `645a594` su β contro il clone): tutti i rifiuti e i codici d'uscita; un'attivazione
+*riuscita* su Linux di proposito no (costerebbe una licenza in più sul clone). `recover` col solo binario ✅ con
+`--port` lo stesso giorno; ⛔ senza `--port` la ricerca muore su `/dev/ttyS1` (§1, §3). Il setup (flash, parole, PIN) resta su Windows. La decifratura non chiede mai licenza; la
+cifratura sì.
 
 ---
 
@@ -21,7 +30,8 @@ Il `README-LINUX.md` accanto a questo file, per il tester, lo dice in testa.
 
 | Cosa | Perché conta |
 |---|---|
-| **`recover` col binario single-file** | `reset` col *solo* `cryptin` è passato il 03/11 (§3). `recover` usa la stessa libreria nativa, ma si prova solo con un chip incastrato in `303a:1001`, e il 03/11 non lo era. 🟡 da agosto |
+| **`recover` *senza* `--port` con un dongle venduto** | ✅ con `--port` il 04/11 (§3). Senza, la ricerca moriva su `/dev/ttyS1` della VM (`ArgumentException` → exit 11): corretto lo stesso giorno, ora le `ttyS*` si saltano (B3). Ma col CH343 collegato aprire `ttyACM0` sembra resettare β prima che la ricerca arrivi alla sua porta, quindi l'esito vero senza CH343 — dove la porta del chip è l'unica `ttyACM` — non è misurato |
+| **`recover` sull'incastro vero** | Il 04/11 `1001` è stato ottenuto col download mode (DTR/RTS dal CH343), non con la gara al boot: con `VMUSBArbService` avviato e sette riattacchi β non c'è mai caduto. Il percorso ROM → watchdog è lo stesso; la causa no |
 | **`recover` fuori dalla VM** | Inferito, non misurato. Tutte le prove Linux sono passate dall'arbitratore USB di VMware |
 | **PIN da terminale (senza eco)** | Il codice c'è (`Program.cs`, ramo `!Console.IsInputRedirected`); le prove hanno usato sempre stdin rediretto |
 | **`open-offline` con il dongle fisicamente staccato** | Eseguito con β collegata, ma `strace -e openat` mostra **zero** aperture di `hidraw` o `libudev`: il comando non tocca il dongle |
@@ -85,7 +95,18 @@ dotnet publish src/CryptinCli -c Release -r linux-x64 \
 
 Un file solo (71,6 MB il 03/11), nessun runtime da installare. Il publish lascia
 accanto `cryptin.pdb` e `CryptinSDK.pdb`: **non vanno nel pacchetto**. Il tar
-contiene `cryptin`, `99-cryptin.rules` e `README-LINUX.md`.
+(owner `root/root`, una cartella `cryptin-linux-x64-<data>-<commit>/`) contiene:
+
+- `cryptin`, `99-cryptin.rules`, `README-LINUX.md`;
+- `LICENSE` e `NOTICE` di questa cartella: Apache-2.0 §4 li vuole accanto a un
+  binario ridistribuito;
+- `licenses/dotnet-runtime-LICENSE.TXT` e `licenses/dotnet-runtime-THIRD-PARTY-NOTICES.TXT`,
+  cioè `LICENSE.TXT` e `THIRD-PARTY-NOTICES.TXT` del runtime pack **della versione
+  nel binario** (`~/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/<versione>/`,
+  9.0.18 il 03/11). Il `NOTICE` li cita per nome: se mancano, il `NOTICE` mente.
+
+Accanto al tar va un `SHA256SUMS` in formato `sha256sum`, col tar, la SBOM e
+ogni file come sta dentro il tar.
 
 🔴 **La SBOM descrive il binario di distribuzione**, e non si legge dal
 single-file (il `.deps.json` finisce dentro). Serve un terzo publish,
@@ -102,6 +123,13 @@ cd .. && python3 scripts/make-sbom-cli.py --rid linux-x64 \
 `--date` è obbligatorio di proposito: presa dall'orologio, la SBOM cambierebbe a
 ogni esecuzione anche a componenti identici. Il 03/11: SPDX-2.3, 8 pacchetti,
 `libudev` e OpenSSL dichiarati come dipendenze esterne.
+
+🔴 **Ogni binario nuovo vuole una SBOM nuova**, anche a dipendenze identiche: la
+SBOM porta lo SHA e la dimensione di `cryptin`, e il binario cambia a ogni commit
+perché il commit è scritto nella versione (`1.0.0+<sha>`). Il 03/11 due
+ricostruzioni del tar l'hanno lasciata indietro (`STATO_LAVORI.md` §9). E
+l'inventario va pubblicato **dallo stesso commit** del binario: se `HEAD` è andato
+avanti, da un `git worktree` su quel commit.
 
 ---
 
@@ -163,6 +191,46 @@ tranne `reset`/`recover` (§1).
 Header del file Windows: `CRIN`, v2, flags 0, la stessa K_identity dei file Linux.
 ⚠️ Per **cifrare** con β su Windows serve la build RedTeam: la beta chiede la
 licenza alla produzione, e la licenza 4 sta sul clone. Decifrare passa sempre.
+
+### `activate` — 04/11, build RedTeam di `645a594`, β contro il clone
+
+Il binario `Release` parla con la produzione: per attivare si usa solo `dotnet build -c RedTeam`
+(`redteam-license.lake8.dev`, lo dice anche la riga «activating with …» su stderr).
+
+| # | Comando | Atteso | Esito |
+|---|---|---|---|
+| A1 | `cryptin activate` con β bloccata | exit **4**, «dongle is locked — run 'cryptin unlock' first» | ✅ |
+| A2 | `unlock < pin`, poi `cryptin activate` | exit **2**, «already has a valid license until 2027-03-31 — nothing was changed», nessuna chiamata al server | ✅ sotto `strace -f -e trace=connect`: **zero** `connect()` |
+| A3 | `cryptin activate --replace` | exit **13**, «already has an active license on the server — nothing was changed» | ✅ 11:38:44Z, verso `redteam-license.lake8.dev` |
+| A4 | `cryptin activate --boh` | exit **2**, «unknown option» | ✅ |
+| A5 | `nmcli networking off`, `cryptin activate --replace` | exit **14**, «license server unreachable» | ✅ rete riaccesa subito dopo |
+| A6 | `cryptin status` alla fine | `license: valid until 2027-03-31 23:59 UTC` | ✅ invariata |
+
+Un comando `lock` non esiste: la sessione sbloccata finisce coi 10 minuti di inattività o
+togliendo corrente.
+
+### `recover` col solo binario di distribuzione — 04/11
+
+`cryptin` del tar `551e75b` (SHA256SUMS verificato), da solo in una cartella vuota, `env -i HOME=… PATH=/usr/bin:/bin`.
+β in `303a:1001` messo **in download mode** dal CH343 (la sequenza DTR/RTS «classic reset» di esptool, con
+pyserial): la USB nativa ricompare come «USB JTAG/serial debug unit», `/dev/ttyACM1`. L'arbitratore di VMware
+non c'è riuscito (§1).
+
+| # | Comando | Esito |
+|---|---|---|
+| B1 | `cryptin recover --port /dev/ttyACM1` | ✅ «recovered on /dev/ttyACM1 — the dongle is back, and locked», exit **0** in 8 s; poi `303a:8123`, `status` → `locked` |
+| B2 | `cryptin recover` senza `--port` (due volte) | ⛔ `ttyACM0` (il CH343) provato, `ttyACM1` «held by another process, skipped», poi `ArgumentException: Value does not fall within the expected range.` su `/dev/ttyS1` → exit **11**. β torna `8123` lo stesso: probabilmente il SYNC è arrivato alla ROM dalla UART0 via CH343 e il watchdog è partito da lì, e ACM1 è sparita sotto la ricerca (ipotesi) |
+| B3 | come B2, con `ArgumentException` presa nel ciclo di `Recover` (build RedTeam, stesso giorno) | ✅ niente exit 11: ogni `ttyS*` «Value does not fall within the expected range., skipped», poi «no dongle answered on any port» → exit **3**. β è tornato `8123` lo stesso: la ricerca non se ne accorge. Probabilmente aprire il CH343 (`ttyACM0`) muove EN e β riparte normale prima che la ricerca arrivi a `ttyACM1` (ipotesi, non misurata). È un effetto del banco: un dongle venduto non ha CH343 |
+
+`libSystem.IO.Ports.Native.so` estratta in `$HOME/.net/cryptin/<hash>/`, come per `reset`. ModemManager è attivo
+nella VM e apre le `ttyACM` nuove per qualche secondo: prima di `--port`, `fuser` sulla porta.
+
+⚠️ **A5 non va rifatto con `nmcli networking off`.** Riaccesa la rete, NetworkManager non
+rimette l'indirizzo gateway ai bridge di Docker: i container restano healthy ma l'host non
+li raggiunge più (il 04/11: Tartufo, il license-server locale e gli altri, per una ventina di
+minuti). Si ripara con `sudo ip addr add <gateway>/<prefisso> dev <bridge>` per ogni rete
+bridge di `docker network inspect`. Per la prossima volta: rendere irraggiungibile solo il
+clone per la CLI (`/etc/hosts` o un namespace di rete), non tutta la VM.
 
 ### `reset` — solo con il cavo UART
 

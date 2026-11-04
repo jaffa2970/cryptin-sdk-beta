@@ -10,6 +10,19 @@
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
+  <!-- Same three configurations as CryptinPersonal, for the same reason: since
+       `activate` exists (2026-11-04) the CLI talks to a licence server, and the
+       binary that talks to the clone must be a different binary from the one
+       that ships, not the same binary with a flag. CRYPTIN_REDTEAM is read in
+       one place, Activation.cs. Optimize by hand: the SDK only sets it for the
+       configuration literally named Release. -->
+  <PropertyGroup>
+    <Configurations>Debug;Release;RedTeam</Configurations>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'RedTeam'">
+    <DefineConstants>$(DefineConstants);CRYPTIN_REDTEAM</DefineConstants>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
   <!-- Apache-2.0, like the library it wraps and unlike the WinForms app. This
        is the licence cryptin.lake8.dev promises for the Linux CLI, and it is
        only possible because src/CryptinSDK/ moved off GPL-3.0 first. -->

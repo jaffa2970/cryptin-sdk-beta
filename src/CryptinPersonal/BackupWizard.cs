@@ -115,6 +115,19 @@ internal sealed class BackupWizard : Form
         "The PIN matches because it comes from the seed: if it differs, a word is wrong.";
     private byte[]? _backupAttestation;
 
+    /// <summary>Set when the registration step unlocked the MAIN dongle with its
+    /// PIN. The earlier PIN, at the seed check, unlocks the backup and does not
+    /// count: that chip is gone from the socket by the time the wizard closes.</summary>
+    private bool _mainUnlocked;
+
+    /// <summary>The main dongle came through the last step unlocked and is the
+    /// one still on the caller's handle, so the main window can stay unlocked
+    /// instead of asking for the PIN a second time (seen on γ, 2026-11-04). Same
+    /// idea as <see cref="LicenseTransferWizard.SessionKept"/>.</summary>
+    internal bool SessionKept =>
+        _mainUnlocked && _dongle.IsConnected &&
+        string.Equals(_dongle.UsbSerial, _mainSerial, StringComparison.OrdinalIgnoreCase);
+
     /// <param name="resume">True to pick up the backup recorded in
     /// <see cref="AppSettings.PendingBackup"/> at step 4. False always starts at
     /// step 1, which is the only way to replace a prepared backup that turned
@@ -1004,6 +1017,7 @@ internal sealed class BackupWizard : Form
 
         using var pin = new PinForm(_dongle, _dongle.UsbSerial);
         if (pin.ShowDialog(this) != DialogResult.OK) return false;
+        _mainUnlocked = true;
 
         try
         {

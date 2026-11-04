@@ -823,14 +823,26 @@ internal sealed class MainForm : Form
     }
 
     /// <summary>Shared by the Backup button and the resume offer, because what
-    /// has to happen afterwards is the same either way: the wizard swaps
-    /// dongles, so no session survives it.</summary>
+    /// has to happen afterwards is the same either way. The wizard swaps
+    /// dongles; when its last step unlocked the main one and that is the chip
+    /// still in the socket, that session is kept rather than asking for the PIN
+    /// again (seen on γ, 2026-11-04 -- the transfer had the same fix on 10-31).</summary>
     private void RunBackupWizard(bool resume)
     {
+        bool kept;
         using (Foreground())
         {
             using var wizard = new BackupWizard(_dongle, _settings, resume);
             wizard.ShowDialog(this);
+            kept = wizard.SessionKept;
+        }
+
+        if (kept)
+        {
+            _connectedSerial = _dongle.UsbSerial;
+            SetState(DongleState.Unlocked);
+            _licenceRefresh = RefreshLicenceAsync();
+            return;
         }
 
         // Outside the scope on purpose: PollDongle returns immediately while

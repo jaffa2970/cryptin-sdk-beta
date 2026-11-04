@@ -1,0 +1,70 @@
+Crypt-in for Windows (CryptinPersonal, CryptinUpdater)
+Copyright 2026 lake8.dev
+
+This file travels as NOTICE.txt at the top of the Windows beta archive. It says
+which licence covers which file in that archive; the full texts are in
+licenses/ beside it. In the source repository the version fields are
+placeholders; scripts/publish-beta.ps1 fills them in from the build itself --
+the versions bundled in the executables, not the ones someone remembers.
+
+--------------------------------------------------------------------------------
+
+WHAT IS IN THE ARCHIVE, AND UNDER WHICH LICENCE
+
+CryptinPersonal.exe     GPL-3.0          licenses/GPL-3.0.txt
+CryptinUpdater.exe      GPL-3.0          licenses/GPL-3.0.txt
+esptool.exe             GPL-2.0          licenses/esptool-@ESPTOOL_VERSION@-GPL-2.0.txt
+                        Espressif's own release, unmodified, run as a
+                        separate process.
+firmware/               the Crypt-in dongle firmware image. Not covered by
+                        this file, and its source is not published.
+uart_cable.png          part of CryptinPersonal; GPL-3.0.
+
+Both executables are self-contained single-file builds: each carries the .NET
+runtime inside it, and CryptinPersonal also carries the libraries listed below.
+
+--------------------------------------------------------------------------------
+
+SOURCE CODE
+
+The source of CryptinPersonal, CryptinUpdater and CryptinSDK is published at
+
+    https://github.com/jaffa2970/cryptin-sdk-beta
+
+The release notes of each beta name the commit the executables were built from.
+GPL-3.0 section 6 asks for that pointer; it is not a courtesy.
+
+--------------------------------------------------------------------------------
+
+COMPONENTS COMPILED INTO CryptinPersonal.exe
+
+CryptinSDK (src/CryptinSDK in the source repository)
+    Copyright 2026 lake8.dev
+    Apache License 2.0              licenses/Apache-2.0.txt
+    Its own NOTICE                  licenses/CryptinSDK-NOTICE.txt
+    A GPL-3.0 application may link an Apache-2.0 library; that is the
+    direction used here.
+
+HidSharp @HIDSHARP_VERSION@ (https://www.nuget.org/packages/HidSharp/)
+    Copyright 2010-2025 James F. Bellinger
+    Apache License 2.0              licenses/HidSharp-LICENSE.txt
+
+System.IO.Ports @PORTS_VERSION@ (https://www.nuget.org/packages/System.IO.Ports/)
+    Copyright (c) .NET Foundation and Contributors
+    MIT License                     licenses/dotnet-runtime-LICENSE.TXT
+    Its third-party notices         licenses/System.IO.Ports-THIRD-PARTY-NOTICES.TXT
+
+The standard BIP-39 English wordlist, compiled into CryptinSDK
+    from https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt
+    (SHA-256 2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda).
+
+COMPONENTS COMPILED INTO BOTH EXECUTABLES
+
+The .NET runtime (Microsoft.NETCore.App), and in CryptinPersonal also the
+Windows Desktop runtime (Microsoft.WindowsDesktop.App, for Windows Forms)
+    Copyright (c) .NET Foundation and Contributors
+    MIT License                     licenses/dotnet-runtime-LICENSE.TXT
+    Third-party notices             licenses/dotnet-runtime-THIRD-PARTY-NOTICES.TXT
+    Version bundled: @DOTNET_RUNTIME_VERSION@ (both runtimes).
+    The Windows Desktop runtime pack ships the same MIT text and no
+    third-party notices file of its own.

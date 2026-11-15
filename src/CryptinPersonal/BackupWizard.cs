@@ -17,6 +17,11 @@ namespace CryptinPersonal;
 /// rather than pretending it does not happen: read the backup's K_attestation
 /// first, then ask for the main one back to sign the challenge.
 ///
+/// Since 2026-11-15 there is a third visit: step 6 puts the backup back in the
+/// socket and writes its own licence token on it. Registration only teaches the
+/// server; without the token on the chip the backup decrypts and will not
+/// encrypt.
+///
 /// Step 4 also acknowledges the backup's handover once the seed is confirmed.
 /// That is not housekeeping: without it the finished backup hands the main
 /// dongle's 24 words and PIN to any host that plugs it in.
@@ -115,18 +120,28 @@ internal sealed class BackupWizard : Form
         "The PIN matches because it comes from the seed: if it differs, a word is wrong.";
     private byte[]? _backupAttestation;
 
-    /// <summary>Set when the registration step unlocked the MAIN dongle with its
-    /// PIN. The earlier PIN, at the seed check, unlocks the backup and does not
-    /// count: that chip is gone from the socket by the time the wizard closes.</summary>
-    private bool _mainUnlocked;
+    /// <summary>The chip the last PIN of steps 5 and 6 unlocked: the main dongle
+    /// at the registration, the backup when its licence is loaded. The earlier
+    /// PIN, at the seed check, does not count: it opens a chip that has to leave
+    /// the socket for step 5.</summary>
+    private string _sessionSerial = "";
 
-    /// <summary>The main dongle came through the last step unlocked and is the
-    /// one still on the caller's handle, so the main window can stay unlocked
-    /// instead of asking for the PIN a second time (seen on γ, 2026-11-04). Same
-    /// idea as <see cref="LicenseTransferWizard.SessionKept"/>.</summary>
+    /// <summary>The backup's USB serial, recorded at step 4, so step 6 can ask
+    /// for that chip by name and not just for "the other one".</summary>
+    private string _backupSerial = "";
+
+    /// <summary>False when step 6 was skipped, so step 7 does not promise that
+    /// both chips encrypt.</summary>
+    private bool _licenceOnBackup;
+
+    /// <summary>The chip unlocked last is the one still on the caller's handle,
+    /// so the main window can stay unlocked instead of asking for the PIN a
+    /// second time (seen on γ, 2026-11-04). Same idea as
+    /// <see cref="LicenseTransferWizard.SessionKept"/>. Since step 6 exists that
+    /// chip is normally the backup, not the main dongle.</summary>
     internal bool SessionKept =>
-        _mainUnlocked && _dongle.IsConnected &&
-        string.Equals(_dongle.UsbSerial, _mainSerial, StringComparison.OrdinalIgnoreCase);
+        _sessionSerial.Length > 0 && _dongle.IsConnected &&
+        string.Equals(_dongle.UsbSerial, _sessionSerial, StringComparison.OrdinalIgnoreCase);
 
     /// <param name="resume">True to pick up the backup recorded in
     /// <see cref="AppSettings.PendingBackup"/> at step 4. False always starts at
@@ -228,14 +243,14 @@ internal sealed class BackupWizard : Form
 
     private void Show(int step)
     {
-        _step = Math.Clamp(step, 1, 6);
+        _step = Math.Clamp(step, 1, 7);
         _body.Controls.Clear();
         // No going back once the swap started -- and on a resumed wizard not at
         // all: steps 1 to 3 belong to a run that has ended, and the 24 words
         // they need were deliberately not kept.
         _back.Enabled = !_resumed && _step is > 1 and < 5;
         _next.Enabled = true;
-        _next.Text = _step == 6 ? "Finish" : "Next";
+        _next.Text = _step == 7 ? "Finish" : "Next";
 
         switch (_step)
         {
@@ -244,7 +259,8 @@ internal sealed class BackupWizard : Form
             case 3: BuildFlashAndRecover(); break;
             case 4: BuildPinCheck(); break;
             case 5: BuildRegister(); break;
-            case 6: BuildStorage(); break;
+            case 6: BuildBackupLicence(); break;
+            case 7: BuildStorage(); break;
         }
     }
 
@@ -314,6 +330,12 @@ internal sealed class BackupWizard : Form
             case 5:
                 if (!await RegisterAsync()) return;
                 Show(6);
+                return;
+
+            case 6:
+                if (!await LoadBackupLicenceAsync()) return;
+                _licenceOnBackup = true;
+                Show(7);
                 return;
 
             default:
@@ -867,6 +889,7 @@ internal sealed class BackupWizard : Form
 
         using var pin = new PinForm(_dongle, _dongle.UsbSerial);
         if (pin.ShowDialog(this) != DialogResult.OK) return false;
+        _backupSerial = _dongle.UsbSerial;
 
         byte[] identity;
         try
@@ -1017,7 +1040,7 @@ internal sealed class BackupWizard : Form
 
         using var pin = new PinForm(_dongle, _dongle.UsbSerial);
         if (pin.ShowDialog(this) != DialogResult.OK) return false;
-        _mainUnlocked = true;
+        _sessionSerial = _dongle.UsbSerial;
 
         try
         {
@@ -1032,9 +1055,18 @@ internal sealed class BackupWizard : Form
             _settings.PendingBackup = null;
             _settings.Save();
 
+            // It used to say "It works immediately, with no further steps". True
+            // of the server, which now trusts the backup; not of the chip, which
+            // holds no licence token yet. Measured 2026-11-15 on two new
+            // ESP32-S3: the backup opened the main dongle's files but refused to
+            // encrypt ("no active license") until Load license was pressed with
+            // it in the socket. The token is bound to each chip's K_attestation
+            // (license.cpp), so the main dongle's cannot be reused: step 6 asks
+            // the server for the backup's own and writes it there.
             MessageBox.Show(this,
                 $"Backup registered. Dongles authorized on this license: {result.TrustedDongles}.\n\n" +
-                "It works immediately, with no further steps.",
+                "One step left: the backup already opens your files, and to encrypt new ones it " +
+                "needs the license on the chip itself.",
                 "Backup", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return true;
         }
@@ -1105,7 +1137,159 @@ internal sealed class BackupWizard : Form
     private static string? EmptyToNull(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    // --- step 6: where to keep it -----------------------------------------
+    // --- step 6: the licence onto the backup itself -----------------------
+
+    private void BuildBackupLicence()
+    {
+        _heading.Text = "Put the license on the backup";
+        _detail.Text = "The server now knows the backup. The chip itself does not hold a license yet: it " +
+                       "opens your files, and refuses to encrypt new ones until it does. The license " +
+                       "is bound to each chip, so the backup gets its own, and it has to be in the socket.";
+
+        var skip = new Button
+        {
+            Text = "Skip — I'll do it later",
+            Location = new Point(0, 120),
+            Size = new Size(200, 30),
+        };
+        skip.Click += (_, _) =>
+        {
+            var answer = MessageBox.Show(this,
+                "Without this the backup opens your files but cannot encrypt new ones.\n\n" +
+                "To fix it later: connect the backup to this program while online, enter the PIN, " +
+                "and press Load license in the main window. If you do not, you will find out on the " +
+                "day you need the backup — possibly away from a network.\n\nSkip anyway?",
+                "Backup without a license", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+            if (answer != DialogResult.Yes) return;
+            _licenceOnBackup = false;
+            Show(7);
+        };
+
+        _body.Controls.AddRange([
+            new Label
+            {
+                Text = $"Disconnect the main dongle, reconnect the backup ({_backupSerial}), then press Next. " +
+                       "It asks for the PIN again: unplugging the chip closed its session.",
+                Location = new Point(0, 0),
+                Size = new Size(600, 48),
+            },
+            new Label
+            {
+                Location = new Point(0, 56),
+                Size = new Size(600, 56),
+                ForeColor = SystemColors.GrayText,
+                Text = "This needs the network once, now. Afterwards the backup encrypts on its own, " +
+                       "with or without a connection.",
+            },
+            skip,
+        ]);
+    }
+
+    /// <summary>
+    /// Asks the server for the backup's own token and writes it on the chip.
+    ///
+    /// Same two calls as Load license in the main window (verify, then
+    /// SET_LICENSE), done here because the end of this wizard is the last
+    /// moment both chips are in someone's hands. Skipping it was the default
+    /// until 2026-11-15, and the wizard said the backup "works immediately":
+    /// it decrypted, and it would not encrypt.
+    ///
+    /// Not shortened by asking for the backup's token from the main dongle at
+    /// step 5: /api/verify would hand it over (the identity signature is the
+    /// same seed, the attestation key is only declared), but the token still
+    /// has to be written on the backup, so the swap cannot be avoided -- and a
+    /// verify that names one chip while being signed by another is not
+    /// something to start relying on.
+    /// </summary>
+    private async Task<bool> LoadBackupLicenceAsync()
+    {
+        if (_backupSerial.Length == 0)
+        {
+            MessageBox.Show(this, "The backup's serial is missing: start the wizard again.",
+                "Backup", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+
+        var attached = CryptinDongle.ListSerials();
+        if (!attached.Contains(_backupSerial, StringComparer.OrdinalIgnoreCase))
+        {
+            MessageBox.Show(this, $"Reconnect the backup ({_backupSerial}).",
+                "Backup", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+
+        _dongle.Disconnect();
+        if (!_dongle.Connect(_backupSerial, waitMs: 5000))
+        {
+            MessageBox.Show(this, "The backup will not open. Disconnect it and connect it again.",
+                "Backup", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+
+        using (var pin = new PinForm(_dongle, _dongle.UsbSerial))
+            if (pin.ShowDialog(this) != DialogResult.OK) return false;
+        _sessionSerial = _dongle.UsbSerial;
+
+        LicenseStatus status;
+        try
+        {
+            using var client = new LicenseClient(LicenseEndpoint.BaseUrl);
+            status = await Task.Run(() => client.VerifyAsync(_dongle));
+        }
+        catch (Exception e)
+        {
+            MessageBox.Show(this,
+                $"The license server could not be asked for the backup's license: {e.Message}\n\n" +
+                "Press Next to try again, or Skip to do it later from the main window.",
+                "License", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+
+        if (status.State is not (LicenseState.Valid or LicenseState.InGracePeriod)
+            || status.Jwt is not { Length: > 0 } jwt)
+        {
+            MessageBox.Show(this,
+                $"The server did not hand out a license for the backup ({status.State}" +
+                (status.Message is { Length: > 0 } m ? $": {m}" : "") + ").\n\n" +
+                "The registration itself went through. Press Next to try again, or Skip.",
+                "License", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+
+        try
+        {
+            await _dongle.SetLicenseJwtAsync(jwt);
+            var onChip = await _dongle.GetLicenseStatusAsync();
+            if (!onChip.IsValid)
+            {
+                MessageBox.Show(this,
+                    $"The license was written but the backup does not accept it ({onChip.Error}).",
+                    "License", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+        }
+        catch (LicenseRejectedException e)
+        {
+            MessageBox.Show(this, $"The backup rejected the license: {e.Message}",
+                "License", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+        catch (CryptinDongleException e)
+        {
+            MessageBox.Show(this, $"Loading the license onto the backup failed: {e.Message}",
+                "License", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+
+        MessageBox.Show(this,
+            "The license is on the backup: it now encrypts and opens files on its own, like the " +
+            "main dongle.",
+            "Backup", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        return true;
+    }
+
+    // --- step 7: where to keep it -----------------------------------------
 
     private void BuildStorage()
     {
@@ -1115,13 +1299,16 @@ internal sealed class BackupWizard : Form
         _body.Controls.Add(new Label
         {
             Location = new Point(0, 0),
-            Size = new Size(600, 200),
+            Size = new Size(600, 240),
             Text =
                 "Keep the backup physically apart from the main dongle, AND from the sheet with the " +
                 "24 words. Three things in the same drawer are one thing: whoever opens the drawer " +
                 "takes all of them, and a fire burns all of them.\n\n" +
-                "Both dongles work, always, with no difference between them. There is no “activate " +
-                "the backup”: if you lose the main one, you pick up the other and carry on.\n\n" +
+                (_licenceOnBackup
+                    ? "Both dongles work, always, with no difference between them. There is no “activate " +
+                      "the backup”: if you lose the main one, you pick up the other and carry on.\n\n"
+                    : "The backup opens your files but cannot encrypt new ones yet: connect it once " +
+                      "while online, enter the PIN and press Load license in the main window.\n\n") +
                 "The 24 words remain the only way out if you lose both chips. Without them and " +
                 "without a dongle, the encrypted files do not open again — there is nobody to " +
                 "call, and that is the reason the system works.",

@@ -6,22 +6,29 @@
 > §3; il rapporto completo è in Tartufo (progetto `cryptin`, argomento «CLI e SDK su Linux»).
 > Il pomeriggio dello stesso giorno: casi 20-21 (`.crin` scambiati con Windows nei due versi) ✅, e
 > `reset` eseguito col ponte CH343 nella VM, anche col **solo** binario di distribuzione ✅.
-> **Pubblicata il 2026-11-03** nella release
-> [`cli-linux-2026-11-03`](https://github.com/jaffa2970/Crypt-in-BETA/releases/tag/cli-linux-2026-11-03)
-> di Crypt-in-BETA, separata e **non Latest**: tar `37bd4de3…05b8` (binario `77ad14c7…f0e9`, da `551e75b`),
-> SBOM `cd009ff8…58fa`, `SHA256SUMS-cli-linux-2026-11-03.txt`.
+> **Uscita il 2026-11-03** (release `cli-linux-2026-11-03`, tar `37bd4de3…05b8` da `551e75b`); quella release è
+> stata **tolta il 2026-11-04**, tag compreso (Tommy: «teniamo solo l'ultima»).
+> **Release corrente:** [`cli-linux-2026-11-04`](https://github.com/jaffa2970/Crypt-in-BETA/releases/tag/cli-linux-2026-11-04)
+> di Crypt-in-BETA, separata e **non Latest** (la Latest è il pacchetto Windows `beta-2026-11-04b`).
+> - tar `cryptin-linux-x64-2026-11-04-6079e76.tar.gz` `cf86ac30…9d69`, binario `486f03d8…3eb6`, da `6079e76`: `activate`,
+>   la ricerca di `recover` corretta;
+> - SBOM `fc9a8b8f…e83e` (8 pacchetti, runtime 9.0.18), anche servita dal sito;
+> - `SHA256SUMS-cli-linux-2026-11-04.txt`;
+> - sorgenti in `cryptin-sdk-beta@570bffc`.
+>
+> Il sito è stato verificato da fuori lo stesso giorno.
 > Le misure precedenti (α, firmware e formato v1) sono del 5-6/08 e stanno in `STATO_LAVORI.md` §8.
 
 Linux è **la piattaforma per cui questa CLI esiste**: è il deliverable del 30
 settembre ed è il motivo per cui `CryptinSDK` è stata rilicenziata Apache-2.0.
 
-⚠️ **`activate` (dal 04/11, non ancora in un pacchetto pubblicato).** Il pacchetto `cli-linux-2026-11-03` non
-ce l'ha: lì il dongle arriva già attivato da Windows. Il codice nuovo (`Activation.cs`) fa l'attivazione beta
+**`activate` (dal 04/11, pubblicato in `cli-linux-2026-11-04`).** Prima il dongle doveva arrivare già attivato
+da Windows. Il codice nuovo (`Activation.cs`) fa l'attivazione beta
 anonima come l'app, e senza `--replace` tiene una licenza valida già sul chip. ✅ Visto su Windows contro il clone il 04/11: i rifiuti (bloccato, già licenziato, `ALREADY_ACTIVATED` → exit 13)
 e **un'attivazione riuscita** su γ (exit 0, token sul chip, poi cifra e decifra). ✅ **Su Linux il 04/11** (§3, casi
 A1-A6, build RedTeam di `645a594` su β contro il clone): tutti i rifiuti e i codici d'uscita; un'attivazione
 *riuscita* su Linux di proposito no (costerebbe una licenza in più sul clone). `recover` col solo binario ✅ con
-`--port` lo stesso giorno; ⛔ senza `--port` la ricerca muore su `/dev/ttyS1` (§1, §3). Il setup (flash, parole, PIN) resta su Windows. La decifratura non chiede mai licenza; la
+`--port` lo stesso giorno; senza `--port` la ricerca moriva su `/dev/ttyS1`, corretta (B3), e il 05/11 ✅ anche nel caso di un dongle venduto, senza CH343 (B4, §3). Il setup (flash, parole, PIN) resta su Windows. La decifratura non chiede mai licenza; la
 cifratura sì.
 
 ---
@@ -30,8 +37,8 @@ cifratura sì.
 
 | Cosa | Perché conta |
 |---|---|
-| **`recover` *senza* `--port` con un dongle venduto** | ✅ con `--port` il 04/11 (§3). Senza, la ricerca moriva su `/dev/ttyS1` della VM (`ArgumentException` → exit 11): corretto lo stesso giorno, ora le `ttyS*` si saltano (B3). Ma col CH343 collegato aprire `ttyACM0` sembra resettare β prima che la ricerca arrivi alla sua porta, quindi l'esito vero senza CH343 — dove la porta del chip è l'unica `ttyACM` — non è misurato |
-| **`recover` sull'incastro vero** | Il 04/11 `1001` è stato ottenuto col download mode (DTR/RTS dal CH343), non con la gara al boot: con `VMUSBArbService` avviato e sette riattacchi β non c'è mai caduto. Il percorso ROM → watchdog è lo stesso; la causa no |
+| **`recover` *senza* `--port` con un dongle venduto** | ✅ con `--port` il 04/11 (§3). Senza, la ricerca moriva su `/dev/ttyS1` della VM (`ArgumentException` → exit 11): corretto lo stesso giorno, ora le `ttyS*` si saltano (B3). ✅ **Senza CH343 il 05/11** (B4): β in `1001` col tasto BOOT, unica `ttyACM`, `recover` senza `--port` → exit 0 al primo colpo |
+| **`recover` sull'incastro vero** | Il 04/11 `1001` è stato ottenuto col download mode (DTR/RTS dal CH343), non con la gara al boot: con `VMUSBArbService` avviato e sette riattacchi β non c'è mai caduto. Il percorso ROM → watchdog è lo stesso; la causa no. Il 05/11 circa dieci inserimenti di β sulla sola presa USB, senza BOOT: sempre `8123`, mai `1001`. Ad agosto l'incastro del recupero dall'app era su α (quelli su Linux non nominano la scheda), con l'arbitratore che chiedeva host/guest a ogni inserimento; oggi `8123` passa alla VM da solo. Non più riproducibile a comando; il recupero sull'incastro vero resta quello di agosto (`dbbc2b8`, due su due) |
 | **`recover` fuori dalla VM** | Inferito, non misurato. Tutte le prove Linux sono passate dall'arbitratore USB di VMware |
 | **PIN da terminale (senza eco)** | Il codice c'è (`Program.cs`, ramo `!Console.IsInputRedirected`); le prove hanno usato sempre stdin rediretto |
 | **`open-offline` con il dongle fisicamente staccato** | Eseguito con β collegata, ma `strace -e openat` mostra **zero** aperture di `hidraw` o `libudev`: il comando non tocca il dongle |
@@ -221,6 +228,7 @@ non c'è riuscito (§1).
 | B1 | `cryptin recover --port /dev/ttyACM1` | ✅ «recovered on /dev/ttyACM1 — the dongle is back, and locked», exit **0** in 8 s; poi `303a:8123`, `status` → `locked` |
 | B2 | `cryptin recover` senza `--port` (due volte) | ⛔ `ttyACM0` (il CH343) provato, `ttyACM1` «held by another process, skipped», poi `ArgumentException: Value does not fall within the expected range.` su `/dev/ttyS1` → exit **11**. β torna `8123` lo stesso: probabilmente il SYNC è arrivato alla ROM dalla UART0 via CH343 e il watchdog è partito da lì, e ACM1 è sparita sotto la ricerca (ipotesi) |
 | B3 | come B2, con `ArgumentException` presa nel ciclo di `Recover` (build RedTeam, stesso giorno) | ✅ niente exit 11: ogni `ttyS*` «Value does not fall within the expected range., skipped», poi «no dongle answered on any port» → exit **3**. β è tornato `8123` lo stesso: la ricerca non se ne accorge. Probabilmente aprire il CH343 (`ttyACM0`) muove EN e β riparte normale prima che la ricerca arrivi a `ttyACM1` (ipotesi, non misurata). È un effetto del banco: un dongle venduto non ha CH343 |
+| B4 | 05/11, `recover` senza `--port` **senza CH343** (scollegato fisicamente, assente in `lsusb`), β ricollegata alla presa USB col **BOOT premuto** → `303a:1001` «USB JTAG/serial debug unit», unica `/dev/ttyACM0`, `fuser` libero. Single-file Release di `09d64e1` (contiene `89e2ea1`), da solo in una cartella vuota, `env -i` | ✅ «trying /dev/ttyACM0…», «recovered on /dev/ttyACM0 — the dongle is back, and locked», exit **0** in 16 s; poi `303a:8123`, `status` → `locked` (exit 4). Le `ttyS*` non sono servite: `ttyACM0` è la prima. È il caso del dongle venduto. Su VMware `1001` ha un ID diverso da `8123` e va passata alla VM a mano, ma la ROM in download mode aspetta senza limite |
 
 `libSystem.IO.Ports.Native.so` estratta in `$HOME/.net/cryptin/<hash>/`, come per `reset`. ModemManager è attivo
 nella VM e apre le `ttyACM` nuove per qualche secondo: prima di `--port`, `fuser` sulla porta.

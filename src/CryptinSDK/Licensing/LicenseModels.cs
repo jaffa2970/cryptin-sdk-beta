@@ -197,8 +197,10 @@ public sealed record BackupResult
     [JsonPropertyName("label")] public string? Label { get; init; }
 
     /// <summary>Counts the main dongle too, which has no row in
-    /// <c>dongle_trusted</c> — so after a first backup this is 2. The backup
-    /// works immediately, with no further step.</summary>
+    /// <c>dongle_trusted</c> — so after a first backup this is 2. The server
+    /// trusts the backup from this moment; the chip does not hold a licence token
+    /// yet, so it decrypts but will not encrypt until one is written on it
+    /// (measured 2026-11-15; the BackupWizard does it at step 6).</summary>
     [JsonPropertyName("trusted_dongles")] public int TrustedDongles { get; init; }
 }
 

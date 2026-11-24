@@ -354,10 +354,21 @@ internal sealed class BackupWizard : Form
                        "A chip with a different seed registers without error and then never finds " +
                        "the license again — that is the case this wizard exists to catch.";
 
-        var grid = new TableLayoutPanel
+        // Before the fields (decided 22/11): standard BIP-39, own derivation, so
+        // a wallet's phrase types in here without a single red word.
+        var notWallet = new Label
         {
             Location = new Point(0, 0),
-            Size = new Size(600, 230),
+            Size = new Size(600, 22),
+            ForeColor = Color.Firebrick,
+            Font = new Font(Font, FontStyle.Bold),
+            Text = "These are NOT wallet words — never use them in a wallet, never type a wallet's words here.",
+        };
+
+        var grid = new TableLayoutPanel
+        {
+            Location = new Point(0, 26),
+            Size = new Size(600, 210),
             ColumnCount = 4,
             RowCount = 6,
         };
@@ -387,7 +398,7 @@ internal sealed class BackupWizard : Form
         var paste = new Button { Text = "Paste the 24 words", Location = new Point(0, 286), Size = new Size(180, 30) };
         paste.Click += (_, _) => PasteAll(status);
 
-        _body.Controls.AddRange([grid, status, paste]);
+        _body.Controls.AddRange([notWallet, grid, status, paste]);
         UpdateSeedStatus(status);
     }
 

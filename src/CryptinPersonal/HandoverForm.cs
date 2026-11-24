@@ -32,7 +32,7 @@ internal sealed class HandoverForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = MinimizeBox = false;
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(620, 560);
+        ClientSize = new Size(620, 584);
 
         // No close button and no Escape: both are ways to lose the phrase by
         // reflex. The only way out is the tick and the button, or killing the
@@ -119,17 +119,28 @@ internal sealed class HandoverForm : Form
             ForeColor = Color.Firebrick,
         };
 
+        // Standard BIP-39 words, own derivation: a wallet accepts these and we
+        // accept a wallet's, so no check can stop the mix-up (decided 22/11).
+        var notWallet = new Label
+        {
+            Text = "These are NOT wallet words — never use them in a wallet, never type a wallet's words here.",
+            Location = new Point(20, 456),
+            Size = new Size(580, 22),
+            ForeColor = Color.Firebrick,
+            Font = new Font(Font, FontStyle.Bold),
+        };
+
         var confirm = new CheckBox
         {
             Text = "I have written the 24 words and the PIN down on paper.",
-            Location = new Point(20, 464),
+            Location = new Point(20, 488),
             Size = new Size(420, 24),
         };
 
         var done = new Button
         {
             Text = "I'm done",
-            Location = new Point(486, 462),
+            Location = new Point(486, 486),
             Size = new Size(114, 30),
             Enabled = false,
             DialogResult = DialogResult.OK,
@@ -139,7 +150,7 @@ internal sealed class HandoverForm : Form
         var lastChance = new Label
         {
             Text = "Clicking “I'm done” stops the dongle showing them, permanently.",
-            Location = new Point(20, 500),
+            Location = new Point(20, 524),
             Size = new Size(580, 22),
             ForeColor = SystemColors.GrayText,
         };
@@ -268,7 +279,7 @@ internal sealed class HandoverForm : Form
         };
 
         Controls.AddRange([heading, detail, grid, quiz, pinLabel, pin, pinNote, warning,
-                           confirm, done, lastChance]);
+                           notWallet, confirm, done, lastChance]);
     }
 
     /// <summary>

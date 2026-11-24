@@ -319,9 +319,20 @@ internal sealed class SerialRecoveryWizard : Form
         _step3.Location = new Point(0, 0);
         _step3.Size = new Size(580, 384);
 
-        var grid = new TableLayoutPanel
+        // Before the fields, not after: the moment to stop someone pasting a
+        // wallet's phrase is before they paste it (decided 22/11).
+        var notWallet = new Label
         {
             Location = new Point(0, 0),
+            Size = new Size(560, 22),
+            ForeColor = Color.Firebrick,
+            Font = new Font(Font, FontStyle.Bold),
+            Text = "These are NOT wallet words — never use them in a wallet, never type a wallet's words here.",
+        };
+
+        var grid = new TableLayoutPanel
+        {
+            Location = new Point(0, 28),
             Size = new Size(560, 240),
             ColumnCount = 4,
             RowCount = 6,
@@ -359,7 +370,7 @@ internal sealed class SerialRecoveryWizard : Form
 
         _counter = new Label
         {
-            Location = new Point(0, 252),
+            Location = new Point(0, 280),
             Size = new Size(560, 40),
             ForeColor = SystemColors.GrayText,
         };
@@ -367,21 +378,21 @@ internal sealed class SerialRecoveryWizard : Form
         var paste = new Button
         {
             Text = "Paste 24 words",
-            Location = new Point(0, 300),
+            Location = new Point(0, 326),
             Size = new Size(160, 30),
         };
         paste.Click += (_, _) => Distribute(Clipboard.GetText());
 
         var warn = new Label
         {
-            Location = new Point(176, 300),
-            Size = new Size(384, 60),
+            Location = new Point(176, 326),
+            Size = new Size(384, 56),
             ForeColor = Color.Firebrick,
             Text = "Recovering overwrites the keys currently on this dongle. " +
                    "With the right words that restores exactly what was there before.",
         };
 
-        _step3.Controls.AddRange([grid, _counter, paste, warn]);
+        _step3.Controls.AddRange([notWallet, grid, _counter, paste, warn]);
     }
 
     private void OnWordChanged(object? sender, EventArgs e)

@@ -245,7 +245,13 @@ internal static class Program
             return Fail($"no such file: {path}", ExitCode.Usage);
 
         if (!Console.IsInputRedirected)
+        {
+            // Crypt-in uses standard BIP-39 words with its own derivation: a
+            // wallet's phrase is just as valid here, so nothing can catch the
+            // mix-up except the user. Said before the prompt, not after.
+            Err("These are NOT wallet words - never use them in a wallet, never type a wallet's words here.");
             Err("type the 24 recovery words, then Enter and Ctrl-Z (Windows) or Ctrl-D:");
+        }
 
         var words = Regex.Matches(Console.In.ReadToEnd().ToLowerInvariant(), "[a-z]+")
                          .Select(m => m.Value).ToList();

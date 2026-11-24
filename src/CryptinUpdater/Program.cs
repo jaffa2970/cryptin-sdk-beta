@@ -93,9 +93,9 @@ internal static class Program
     /// </summary>
     private const string BundledImageSha256 =
         // SHA-256 of a published artefact, not key material.
-        // 2e1bbef (on-chip New identity, CMD_REKEY 0x11/0x12), built 2026-10-31,
-        // seen on γ and β; replaces 90d0cd9 (f66a17cd…), archived in dist/firmware-archive.
-        "b33bb3976b2a8a5e2a9118938a96dc8f2439c1498204756fac5c9f0b54a25f7a";  // cryptin-secret-ok
+        // a49d6b2 ("These are NOT wallet words" on the serial handover and recover),
+        // built 2026-11-24; replaces 2e1bbef (b33bb397…), both archived in dist/firmware-archive.
+        "a550b72220a3c01df927c69f99ab3af4161d1c5086d7565e684f96af697999fb";  // cryptin-secret-ok
 
     /// <summary>Beside the executable, which is where the package puts it.</summary>
     private static string BundledImagePath =>
